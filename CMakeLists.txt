@@ -12,7 +12,10 @@ find_package(mbedtls CONFIG REQUIRED)
 
 
 pkg_check_modules(lz4 REQUIRED IMPORTED_TARGET liblz4)
-add_library(sxaint_core STATIC main.cpp)
+add_library(sxaint_core STATIC main.cpp
+        src/core/file_mapper.cpp
+        src/core/thread_pool.cpp
+)
 
 target_include_directories(sxaint_core PUBLIC src)
 target_compile_definitions(sxaint_core PUBLIC _WIN32_WINNT=0x0A00)
@@ -26,5 +29,7 @@ target_link_libraries(
 )
 add_executable(Sxaint main.cpp
         include/core/file_mapper.h
-        src/core/file_mapper.cpp)
+        src/core/file_mapper.cpp
+        include/core/thread_pool.h
+        src/core/thread_pool.cpp)
 target_link_libraries(Sxaint PRIVATE sxaint_core)
