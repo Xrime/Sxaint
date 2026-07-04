@@ -31,5 +31,8 @@ add_executable(Sxaint main.cpp
         include/core/file_mapper.h
         src/core/file_mapper.cpp
         include/core/thread_pool.h
-        src/core/thread_pool.cpp)
+        src/core/thread_pool.cpp
+        include/core/hasher.h
+        include/core/test.h
+        src/core/hasher.cpp)
 target_link_libraries(Sxaint PRIVATE sxaint_core)
