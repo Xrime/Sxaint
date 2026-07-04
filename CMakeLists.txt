@@ -35,5 +35,7 @@ add_executable(Sxaint main.cpp
         include/core/hasher.h
         include/core/chunker.h
         src/core/hasher.cpp
-        src/core/chunker.cpp)
+        src/core/chunker.cpp
+        include/core/compressor.h
+        src/core/compressor.cpp)
 target_link_libraries(Sxaint PRIVATE sxaint_core)
