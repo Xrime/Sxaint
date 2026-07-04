@@ -33,6 +33,7 @@ add_executable(Sxaint main.cpp
         include/core/thread_pool.h
         src/core/thread_pool.cpp
         include/core/hasher.h
-        include/core/test.h
-        src/core/hasher.cpp)
+        include/core/chunker.h
+        src/core/hasher.cpp
+        src/core/chunker.cpp)
 target_link_libraries(Sxaint PRIVATE sxaint_core)
