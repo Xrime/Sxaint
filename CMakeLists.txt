@@ -27,6 +27,7 @@ target_link_libraries(
         zstd::libzstd_shared
         mbedtls
 )
+include_directories(kcp-2.1.1)
 add_executable(Sxaint main.cpp
         include/core/file_mapper.h
         src/core/file_mapper.cpp
@@ -38,5 +39,8 @@ add_executable(Sxaint main.cpp
         src/core/chunker.cpp
         include/core/compressor.h
         src/core/compressor.cpp
-        include/net/transport.h)
+        include/net/transport.h
+        src/net/transport.cpp
+        kcp-2.1.1/ikcp.c
+)
 target_link_libraries(Sxaint PRIVATE sxaint_core)
