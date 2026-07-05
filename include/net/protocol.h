@@ -17,7 +17,7 @@ namespace sxaint::net {
         messageType type{messageType::handshake};
         uint64_t file_size;
         uint32_t chunk_size;
-        uint32_t total_chunk;
+        uint32_t total_chunks;
         char file_name[255];
     };
     struct chunkWireHeader {

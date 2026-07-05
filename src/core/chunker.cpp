@@ -14,14 +14,14 @@ namespace sxaint::core {
         chunks.reserve(totalChunks);
         spdlog::debug("Slicing file of {} bytes into {} chunks (size: {} bytes)", totalSize, totalChunks,chunk_size);
         for (uint32_t i = 0; i<totalChunks; ++i) {
-            size_t offset = i +chunk_size;
-            size_t current_chunk_size = std::min(chunk_size, totalSize -offset);
+            size_t offset = i * chunk_size;
+            size_t current_chunk_size = std::min(chunk_size, totalSize - offset);
 
             Chunk chunk;
             chunk.id=i;
             chunk.totalChunks = totalChunks;
             chunk.payloadSize = static_cast<uint32_t>(current_chunk_size);
-            chunk.data = file_view.subspan(offset, current_chunk_size);
+            chunk.data = std::span<const std::byte>(file_view.data()+ offset, current_chunk_size);
             chunk.crc32 = Hasher::crc32(chunk.data);
 
             if (i == totalChunks-1) {chunk.flags |= 0x02;}

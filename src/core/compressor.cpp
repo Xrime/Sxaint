@@ -33,19 +33,34 @@ namespace sxaint::core {
     }
     smartCompressor::Strategy smartCompressor::detect(const std::filesystem::path &path, std::span<const std::byte> file_sample) {
         std::string exten =path.extension().string();
-        std::transform(exten.begin(), exten.end(), exten.begin(), ::tolower);
-
+        for (char& c : exten) {
+            if (c >='A' && c <= 'Z') {
+                c+= 32;
+            }
+        }
         if (skip_exten_.contains(exten)) {
-            spdlog::debug("Skipped {} file ", path.filename().string());
+            spdlog::debug("file {} skipped compression", path.filename().string());
             return Strategy::NONE;
         }
-        double entropy = calc_entropy(file_sample);
-        spdlog::debug("file {} entropy calculated as {:.2f} bits/bytes", path.filename().string(), entropy);
-
+        double entropy =calc_entropy(file_sample);
         if (entropy > 7.5) {
             return Strategy::NONE;
         }
         return Strategy::LZ4;
+        // std::transform(exten.begin(), exten.end(), exten.begin(), [](unsigned char c){return std::tolower(c);});
+        //
+        // if (skip_exten_.contains(exten)) {
+        //     spdlog::debug("Skipped {} file ", path.filename().string());
+        //     return Strategy::NONE;
+        // }
+        // double entropy = calc_entropy(file_sample);
+        // spdlog::debug("file {} entropy calculated as {:.2f} bits/bytes", path.filename().string(), entropy);
+        //
+        // if (entropy > 7.5) {
+        //     return Strategy::NONE;
+        // }
+        // return Strategy::LZ4;
+
     }
     size_t smartCompressor::get_compress_bound(size_t input_size, Strategy strategy) {
         if (strategy == Strategy::LZ4) {

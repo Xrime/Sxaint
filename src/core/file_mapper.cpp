@@ -84,6 +84,25 @@ namespace sxaint::core {
         return std::span<std::byte>(static_cast<std::byte*>(mappedView_),length);
 
     }
+    std::span<std::byte> FileMapper::map_write(const std::filesystem::path &path, uint64_t offset, size_t length) {
+        cleanup();
+        fileHandle_ = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE,FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (fileHandle_ == INVALID_HANDLE_VALUE) {
+            throw std::runtime_error("failed to create file mapping");
+        }
+        mappingHandle_ = CreateFileMappingW(fileHandle_, nullptr, PAGE_READWRITE,0,0,nullptr);
+        if (!mappingHandle_) {
+            throw std::runtime_error("failed to create file mapping");
+        }
+        ULARGE_INTEGER liOffset;
+        liOffset.QuadPart = offset;
+
+        mappedView_ = MapViewOfFile(mappingHandle_, FILE_MAP_WRITE, liOffset.HighPart, liOffset.LowPart, length);
+        if (!mappedView_) throw std::runtime_error("failed to map the view of file");
+        mappedLength_ =length;
+        return  std::span<std::byte>(static_cast<std::byte*>(mappedView_), length);
+    }
+
     void FileMapper::unmap() {
         cleanup();
     }
@@ -91,7 +110,7 @@ namespace sxaint::core {
         WIN32_MEMORY_RANGE_ENTRY entry;
         entry.VirtualAddress = const_cast<std::byte*>(region.data());
         entry.NumberOfBytes = region.size();
-        PrefetchVirtualMemory(GetCurrentProcess(),1,&entry,0);
+        //PrefetchVirtualMemory(GetCurrentProcess(),1,&entry,0);
     }
 
 

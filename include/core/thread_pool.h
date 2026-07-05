@@ -18,13 +18,11 @@ namespace sxaint::core {
     public:
         explicit ThreadPool(size_t threads =0);
         ~ThreadPool();
-        template<typename F,typename...Args>
-        auto submit(F&& f, Args&&... args)-> std::future<std::invoke_result_t<F,Args...>> {
-            using returnType = std::invoke_result_t<F,Args...>;
-            auto task = std::make_shared<std::packaged_task<returnType()>>(
-                std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-                );
-            std::future<returnType> res =task->get_future();
+        template<typename F>
+        auto submit(F&& f) -> std::future<std::invoke_result_t<F>> {
+            using return_type = std::invoke_result_t<F>;
+            auto task = std::make_shared<std::packaged_task<return_type()>>(std::forward<F>(f));
+            std::future<return_type> res = task->get_future();
             {
                 std::unique_lock<std::mutex> lock(queue_mutex_);
                 if (shutdown_) {

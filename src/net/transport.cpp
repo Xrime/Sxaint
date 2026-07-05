@@ -58,6 +58,7 @@ namespace sxaint::net {
         inet_pton(AF_INET, host.c_str(), &remote_addr_.sin_addr);
         kcp_ = ikcp_create(config.conv_id, this);
         kcp_->output = kcpOutputCallback;
+        kcp_->stream = 1;
 
         ikcp_nodelay(kcp_,config.nodelay,config.interval, config.resend, config.nc);
         ikcp_wndsize(kcp_, config.send_wnd, config.recv_wnd);
@@ -86,6 +87,7 @@ namespace sxaint::net {
         }
         kcp_ = ikcp_create(config.conv_id, this);
         kcp_->output= kcpOutputCallback;
+        kcp_->stream = 1;
         ikcp_nodelay(kcp_, config.nodelay, config.interval, config.resend, config.nc);
         ikcp_wndsize(kcp_,config.send_wnd, config.recv_wnd);
         ikcp_setmtu(kcp_, config.mtu);
@@ -95,22 +97,30 @@ namespace sxaint::net {
         spdlog::info("KCP transport listen on port{}", port);
     }
     void KCPTransport::sendChunk(const core::Chunk &chunk) {
-        //later to tag chunk header to data, fornoew raw date
-        int ret = ikcp_send(kcp_, reinterpret_cast<const char *>(chunk.data.data()), static_cast<int>(chunk.payloadSize));
-        if (ret < 0) {
+        // //later to tag chunk header to data, fornoew raw date
+        // int ret = ikcp_send(kcp_, reinterpret_cast<const char *>(chunk.data.data()), static_cast<int>(chunk.payloadSize));
+        // if (ret < 0) {
+        //     spdlog::error("KCP send failed: {}", ret);
+        std::lock_guard<std::mutex> lock(kcpMutex_);
+        //send a 4-bytes data so that the receiver know how much data is coming
+        uint32_t len = static_cast<uint32_t>(chunk.payloadSize);
+        ikcp_send(kcp_, reinterpret_cast<const char *>(&len), 4);
+        int ret =ikcp_send(kcp_,reinterpret_cast<const char *>(chunk.data.data()), static_cast<int>(len));
+        if (ret <0) {
             spdlog::error("KCP send failed: {}", ret);
         }
 
     }
+
     void KCPTransport::setRecvCallback(onChunkReceived cb) {
         on_received_ = std::move(cb);
     }
     void KCPTransport::net_loop() {
         std::vector<char> recv_buf(65536);
-        std::vector<char> payload_buf(4*1024*1024); // 4mb max per chunkbufer
-
+        std::vector<std::byte> stream_buffer;
         u_long mode =1;
         ioctlsocket(socket_, FIONBIO, &mode);
+        bool address_locked = false;
         while (running_) {
             auto now = static_cast<IUINT32>(std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count());
@@ -118,11 +128,15 @@ namespace sxaint::net {
             int sender_len = sizeof(sender_addr);
 
             while (true) {
-                int bytes_read = recvfrom(socket_, recv_buf.data(), static_cast<int>(recv_buf.size()),0,reinterpret_cast<sockaddr*>(&sender_addr), &sender_len);
+                int bytes_read = recvfrom(socket_, recv_buf.data(), static_cast<int>(recv_buf.size()),0,
+                                            reinterpret_cast<sockaddr*>(&sender_addr), &sender_len);
                 if (bytes_read >0) {
                     std::lock_guard<std::mutex> lock(kcpMutex_);
                     ikcp_input(kcp_, recv_buf.data(), bytes_read);
-                    remote_addr_= sender_addr;
+                    if (!address_locked && remote_addr_.sin_family == 0) {
+                        remote_addr_ = sender_addr;
+                        address_locked = true;
+                    }
                 }else break;
 
             }
@@ -132,19 +146,33 @@ namespace sxaint::net {
             }
             //reassembled
             while (true) {
-                std::lock_guard<std::mutex> lock(kcpMutex_);
-                int size  = ikcp_recv(kcp_, payload_buf.data(), static_cast<int>(payload_buf.size()));
+                kcpMutex_.lock();
+                int size = ikcp_recv(kcp_, recv_buf.data(), static_cast<int>(recv_buf.size()));
+                kcpMutex_.unlock();
+                //std::lock_guard<std::mutex> lock(kcpMutex_);
                 if (size>0) {
                     byteReceived_ += size;
-                    if (on_received_) {
-                        std::vector<std::byte> finalData(size);
-                        std::memcpy(finalData.data(), payload_buf.data(),size);
-                        kcpMutex_.unlock();
-                        on_received_(std::move(finalData));
-                        kcpMutex_.lock();
+                    stream_buffer.insert(stream_buffer.end(),
+                        reinterpret_cast<std::byte*>(recv_buf.data()),
+                        reinterpret_cast<std::byte *>(recv_buf.data())+size
+                        );
+                    while (stream_buffer.size() >=4) {
+                        uint32_t frameLength = 0;
+                        std::memcpy(&frameLength, stream_buffer.data(),4);
+
+                        if (stream_buffer.size() >= 4 + frameLength) {
+                            std::vector<std::byte> final_data(frameLength);
+                            std::memcpy(final_data.data(), stream_buffer.data()+ 4 ,frameLength);
+                            stream_buffer.erase(stream_buffer.begin(), stream_buffer.begin() + 4 + frameLength);
+                            if (on_received_) {
+                                on_received_(std::move(final_data));
+                            }
+                        }else {
+                            break;
+                        }
                     }
                 }else {
-                    break;;
+                    break;
                 }
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -158,11 +186,4 @@ namespace sxaint::net {
         s.bytes_received = byteReceived_.load();
         return s;
     }
-
-
-
-
-
-
-
 }
