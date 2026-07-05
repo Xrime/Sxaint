@@ -42,5 +42,10 @@ add_executable(Sxaint main.cpp
         include/net/transport.h
         src/net/transport.cpp
         kcp-2.1.1/ikcp.c
+        include/net/protocol.h
 )
 target_link_libraries(Sxaint PRIVATE sxaint_core)
+if(WIN32)
+    target_link_libraries(Sxaint PRIVATE ws2_32)
+endif()
+
