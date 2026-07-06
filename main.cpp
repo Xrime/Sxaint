@@ -26,6 +26,46 @@ int main(int argc, char* argv[]) {
     std::string mode = argv[1];
     std::string path = argv[2];
 
+    const uint16_t DATA_PORT = 9000;
+    const uint16_t DISCOVERY_PORT = 9001;
+
+    if (mode == "receive") {
+        net::Discovery discovery;
+        discovery.start(DISCOVERY_PORT, "Sxaint-Receiver");
+
+        net::Session session; //ready the kcp
+        session.recvFile(path, DATA_PORT);
+    }else if (mode == "send") {
+        net::Discovery discovery;
+        std::promise<std::string> peer_promise;
+        std::atomic<bool> found = false;
+
+        discovery.set_callback([&](const net::Peer& peer) {
+            if (peer.hostname == "Sxaint-Sender") return;
+
+           if (!found.exchange(true)) {
+               spdlog::info("found receiver '{}' at {}", peer.hostname, peer.ip_address);
+               peer_promise.set_value(peer.ip_address);
+           }
+        });
+        spdlog::info("Scanning local network for recv");
+        discovery.start(DISCOVERY_PORT, "Sxaint-Sender");
+        std::string target_ip ;
+        auto future = peer_promise.get_future();
+
+        if (future.wait_for(std::chrono::seconds(3)) == std::future_status::ready) {
+            target_ip = future.get();
+        } else {
+            spdlog::warn("No Wi-Fi peers found. Defaulting to local machine (127.0.0.1)");
+            target_ip = "127.0.0.1";
+        }
+        discovery.stop();
+        net::Session session;
+        session.sendFile(path, target_ip, DATA_PORT);
+    }else {
+        spdlog::error("unknown mode: {}. use 'send' or 'recv'", mode);
+        return  1;
+    }
     // try {
     //     sxaint::net::Session session;
     //     if (mode == "send" && __argc == 5) {

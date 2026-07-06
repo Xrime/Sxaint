@@ -47,6 +47,7 @@ add_executable(Sxaint main.cpp
         src/net/session.cpp
         include/net/discovery.h
         src/net/discovery.cpp
+        include/core/manifest.h
 )
 target_link_libraries(Sxaint PRIVATE sxaint_core)
 if(WIN32)

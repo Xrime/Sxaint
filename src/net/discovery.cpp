@@ -59,9 +59,16 @@ namespace sxaint::net {
         broadcast__addr.sin_family = AF_INET;
         broadcast__addr.sin_port = htons(port_);
         broadcast__addr.sin_addr.s_addr = INADDR_BROADCAST;
+
+        sockaddr_in local_addr{};
+        local_addr.sin_family = AF_INET;
+        local_addr.sin_port =htons(port_);
+        inet_pton(AF_INET,"127.0.0.1", &local_addr.sin_addr);
+
         std::string payload = "Sxaint|"+deviceName_;
         while (running_) {
             sendto(broadcastSocket_,payload.c_str(), static_cast<int>(payload.length()),0, reinterpret_cast<sockaddr*>(&broadcast__addr), sizeof(broadcast__addr));
+            sendto(broadcastSocket_, payload.c_str(),static_cast<int>(payload.length()),0, reinterpret_cast<sockaddr*>(&local_addr), sizeof(local_addr));
             std::this_thread::sleep_for(std::chrono::seconds(2));
         }
     }
