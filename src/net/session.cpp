@@ -7,6 +7,7 @@
 #include "../include/core/hasher.h"
 #include <spdlog/spdlog.h>
 #include <algorithm>
+#include <iostream>
 
 namespace sxaint::net {
 
@@ -17,7 +18,7 @@ namespace sxaint::net {
     }
 
     void Session::sendFile(const std::filesystem::path &file_path, const std::string &target_ip, uint16_t port) {
-        spdlog::info("Starting sender session for {}", file_path.string());
+        spdlog::info("Starting sender session for {}", file_path.filename().string());
 
         uint64_t file_size = std::filesystem::file_size(file_path);
         auto file_view = file_mapper_.map_read(file_path, 0, file_size);
@@ -38,13 +39,25 @@ namespace sxaint::net {
         hs_chunk.payloadSize = sizeof(handshake);
         hs_chunk.data = std::span<const std::byte>(reinterpret_cast<const std::byte*>(&hs), sizeof(handshake));
         transport_.sendChunk(hs_chunk);
+        spdlog::info("handshake sent. Waiting for receiver to acknowledge resume state");
+        while (!handshake_acked_) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
 
         auto sample_size = std::min<size_t>(4096, file_size);
         auto strategy = core::smartCompressor::detect(file_path, std::span<const std::byte>(file_view.data(), sample_size));
 
         std::vector<std::future<void>> futures;
+        uint32_t skipped_chunks = 0;
 
         for (const auto& chunk : chunks) {
+
+            if (chunk.id < resume_bitfield_.size() && resume_bitfield_[chunk.id]) {
+                skipped_chunks++;
+                chunks_sent_++;
+                continue;
+            }
             // CRITICAL FIX: Extract primitive types so MinGW doesn't corrupt the memory inside the thread
             uint32_t c_id = chunk.id;
             uint32_t c_size = chunk.payloadSize;
@@ -57,7 +70,7 @@ namespace sxaint::net {
                     std::vector<std::byte> wireBuffer(sizeof(chunkWireHeader) + max_bound);
 
                     chunkWireHeader header{};
-                    header.type = messageType::chunkData;
+                    header.type = static_cast<uint8_t>(messageType::chunkData);
                     header.chunk_id = c_id;
                     header.original_size = c_size;
                     header.crc32 = c_crc32;
@@ -80,6 +93,7 @@ namespace sxaint::net {
                     net_chunk.data = std::span<const std::byte>(wireBuffer.data(), net_chunk.payloadSize);
 
                     transport_.sendChunk(net_chunk);
+                    chunks_sent_++;
                 } catch (const std::exception& e) {
                     spdlog::error("Thread error: {}", e.what());
                 }
@@ -87,13 +101,28 @@ namespace sxaint::net {
         }
 
         // Wait safely until all background threads finish compressing
-        for (auto& f : futures) {
+        // for (auto& f : futures) {
+        //     f.get();
+        // }
+        //
+        // spdlog::info("All chunks dispatched to network. waiting for ACKs...");
+        // std::this_thread::sleep_for(std::chrono::seconds(2));
+        // spdlog::info("transfer complete.");
+        if (skipped_chunks>0) {
+            spdlog::info("Resuming Transfer: Skipped {} chunks that already exist.", skipped_chunks);
+        }
+        uint32_t total = chunks.size();
+        while (chunks_sent_ <total) {
+            int percent = (chunks_sent_ * 100)/total;
+            std::cout << "\r[SENDER]   [" << std::string(percent / 2, '#') << std::string(50 - percent / 2, ' ') << "] " << percent << "% " << std::flush;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+        }
+        std::cout << "\r[SENDER]   [" << std::string(50, '#') << "] 100%\n" << std::flush;
+        for (auto& f :futures) {
             f.get();
         }
-
-        spdlog::info("All chunks dispatched to network. waiting for ACKs...");
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        spdlog::info("transfer complete.");
+        spdlog::info("Transfer complete. Closing buffers.");
     }
 
     void Session::recvFile(const std::filesystem::path &output_dir, uint16_t port) {
@@ -122,7 +151,10 @@ namespace sxaint::net {
                 std::memcpy(&hs, data.data(), sizeof(handshake));
                 processHandshake(&hs);
             }
-        } else if (type == messageType::chunkData) {
+        }else if (type == messageType::handshakeAck){
+            processHandshakeACk(data);
+        }
+        else if (type == messageType::chunkData) {
             if (data.size() >= sizeof(chunkWireHeader)) {
                 // Safely read unaligned memory
                 chunkWireHeader header{};
@@ -145,11 +177,31 @@ namespace sxaint::net {
     }
 
     void Session::processHandshake(const handshake *hs) {
-        spdlog::info("Handshake: {} ({} bytes, {} chunks)", hs->file_name, hs->file_size, hs->total_chunks);
+
+        current_filename_ = hs->file_name;
         expectedChunks_ = hs->total_chunks;
-        auto target_path = output_dir_ / hs->file_name;
+        auto target_path = output_dir_ / current_filename_;
+        auto manifest_path = output_dir_/(current_filename_+ ".manifest");
+
+        if (!core::transferManifest::load(manifest_path, current_manifest_)) {
+            current_manifest_.fileHash = current_filename_;
+            current_manifest_.fileSize = hs->file_size;
+            current_manifest_.chunk_size = hs->chunk_size;
+            current_manifest_.total_chunks = hs->total_chunks;
+            current_manifest_.completedChunks.assign(hs->total_chunks,false);
+            chunks_recv_ = 0;
+            spdlog::info("Handshake: {} ({} bytes, {} chunks)", hs->file_name, hs->file_size, hs->total_chunks);
+        }else {
+            chunks_recv_= std::count(current_manifest_.completedChunks.begin(),current_manifest_.completedChunks.end(), true);
+            spdlog::info("Resuming {}, found {} /{} completed chunks.", current_filename_, chunks_recv_.load(), expectedChunks_.load());
+            if (current_manifest_.is_complete()) trans_complete_=true;
+        }
         core::FileMapper::preallocate_file(target_path, hs->file_size);
         write_view_ = file_mapper_.map_write(target_path, 0, hs->file_size);
+
+        auto packed_bits = current_manifest_.pack_bitfield();
+        std::vector<std::byte> ack_buffer(sizeof(handshakeAck) + packed_bits.size());
+
     }
 
     void Session::processChunk(const chunkWireHeader *header, std::span<const std::byte> payload) {

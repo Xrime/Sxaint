@@ -7,28 +7,32 @@
 #include <cstdint>
 
 namespace sxaint::net {
-#pragma pack(push, 1)
 
     enum class messageType: uint8_t {
-        handshake = 1,
-        chunkData = 2
+        handshake = 0x01,
+        handshakeAck  = 0x02,
+        chunkData = 0x03
+
     };
+#pragma pack(push, 1)
     struct handshake {
-        messageType type{messageType::handshake};
+        uint8_t type = static_cast<uint8_t>(messageType::handshake);
         uint64_t file_size;
         uint32_t chunk_size;
         uint32_t total_chunks;
-        char file_name[255];
+        char file_name[256];
+    };
+    struct handshakeAck {
+        uint8_t type = static_cast<uint8_t>(messageType::handshakeAck);
+        uint32_t total_chunks;
     };
     struct chunkWireHeader {
-        messageType type{messageType::chunkData};
+        uint8_t type = static_cast<uint8_t>(messageType::chunkData);
         uint32_t chunk_id;
         uint32_t compressed_size;
         uint32_t original_size;
         uint32_t crc32;
         uint8_t compress_stra;
-
-
     };
 #pragma pack(pop)
 }

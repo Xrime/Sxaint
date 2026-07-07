@@ -5,12 +5,15 @@
 #ifndef SXAINT_SESSION_H
 #define SXAINT_SESSION_H
 #include "transport.h"
+#include "../core/manifest.h"
 #include "protocol.h"
 #include "../core/file_mapper.h"
 #include "../core/thread_pool.h"
 #include <filesystem>
 #include <atomic>
 #include <memory>
+#include <mutex>
+#include <future>
 
 namespace sxaint::net {
     class Session {
@@ -25,18 +28,25 @@ namespace sxaint::net {
     private:
         void handleRecv(std::vector<std::byte>&& data);
         void processHandshake(const handshake* hs);
+        void processHandshakeACk(const std::vector<std::byte>& data);
         void processChunk(const chunkWireHeader* header, std::span<const std::byte> payload);
 
         KCPTransport transport_;
         core::ThreadPool thread_pool_;
         core::FileMapper file_mapper_;
-
         std::filesystem::path output_dir_;
-        std::atomic<uint32_t> chunks_recv_{0};
-        uint32_t expectedChunks_{0};
-        bool trans_complete_{false};
-
+        std::string current_filename_;
         std::span<std::byte> write_view_;
+
+        std::atomic<uint32_t> chunks_recv_{0};
+        std::atomic<uint32_t> expectedChunks_{0};
+        std::atomic<bool> trans_complete_{false};
+        std::atomic<uint32_t> chunks_sent_{0};
+
+        std::atomic<bool> handshake_acked_{false};
+        std::vector<bool> resume_bitfield_;
+        core::transferManifest current_manifest_;
+        std::mutex manifest_mutex_;
     };
 }
 #endif //SXAINT_SESSION_H

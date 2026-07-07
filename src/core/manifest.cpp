@@ -55,6 +55,14 @@ namespace sxaint::core {
 
         return true;
     }
+    bool transferManifest::is_complete() const {
+        if (completedChunks.empty()) return false;
+        for (bool c : completedChunks) {
+            if (!c) return false;
+        }
+        return true;
+    }
+
 
 
 
