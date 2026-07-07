@@ -201,8 +201,31 @@ namespace sxaint::net {
 
         auto packed_bits = current_manifest_.pack_bitfield();
         std::vector<std::byte> ack_buffer(sizeof(handshakeAck) + packed_bits.size());
+        handshakeAck ack{};
+        ack.type= static_cast<uint8_t>(messageType::handshakeAck);
+        ack.total_chunks = hs->total_chunks;
+        std::memcpy(ack_buffer.data(), &ack, sizeof(handshakeAck));
+        std::memcpy(ack_buffer.data()+sizeof(handshakeAck), packed_bits.data(),packed_bits.size());
 
+        core::Chunk ack_chunk{};
+        ack_chunk.payloadSize = ack_buffer.size();
+        ack_chunk.data = std::span<const std::byte>(ack_buffer.data(), ack_buffer.size());
+        transport_.sendChunk(ack_chunk);
     }
+    void Session::processHandshakeACk(const std::vector<std::byte> &data) {
+        if (data.size()< sizeof(handshakeAck)) return;
+        handshakeAck ack{};
+        std::memcpy(&ack, data.data(), sizeof(handshakeAck));
+        size_t bitfield_size = data.size() - sizeof(handshakeAck);
+        std::vector<uint8_t> packed_bitfield(bitfield_size);
+        std::memcpy(packed_bitfield.data(), data.data()+ sizeof(handshakeAck), bitfield_size);
+        resume_bitfield_.assign(ack.total_chunks, false);
+        for (uint32_t i = 0; i < ack.total_chunks; ++i) {
+            resume_bitfield_[i] = (packed_bitfield[i / 8] & (1 << (i % 8))) != 0;
+        }
+        handshake_acked_ = true;
+    }
+
 
     void Session::processChunk(const chunkWireHeader *header, std::span<const std::byte> payload) {
         if (write_view_.empty()) return;
@@ -220,14 +243,23 @@ namespace sxaint::net {
             spdlog::error("CRC32 mismatch on chunk {}", header->chunk_id);
             return;
         }
-
-        uint32_t received = ++chunks_recv_;
-        if (received % 50 == 0 || received == expectedChunks_) {
-            spdlog::info("progress: {}/{} chunks received.", received, expectedChunks_);
+        {
+            std::lock_guard<std::mutex> lock(manifest_mutex_);
+            if (!current_manifest_.completedChunks[header->chunk_id]) {
+                current_manifest_.completedChunks[header->chunk_id] = true;
+                if (chunks_recv_ % 50 == 0) {
+                    current_manifest_.save(
+                        output_dir_/ (current_filename_+ ".manifest"));
+                }
+            }
         }
-
+        uint32_t received = ++chunks_recv_;
+        int percent = (received * 100)/ expectedChunks_;
+        std::cout << "\r[RECEIVER] [" << std::string(percent / 2, '=') << std::string(50 - percent / 2, ' ') << "] " << percent << "% " << std::flush;
         if (received == expectedChunks_) {
-            trans_complete_ = true;
+            std::cout<< "\n";
+            current_manifest_.save(output_dir_/ (current_filename_+ ".manifest"));
+            trans_complete_= true;
         }
     }
 
