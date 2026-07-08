@@ -96,20 +96,36 @@ namespace sxaint::net {
         io_thread_ = std::jthread(&KCPTransport::net_loop, this);
         spdlog::info("KCP transport listen on port{}", port);
     }
-    void KCPTransport::sendChunk(const core::Chunk &chunk) {
+    void KCPTransport::sendChunk(std::vector<std::byte> &&raw_payload) {
         // //later to tag chunk header to data, fornoew raw date
         // int ret = ikcp_send(kcp_, reinterpret_cast<const char *>(chunk.data.data()), static_cast<int>(chunk.payloadSize));
         // if (ret < 0) {
         //     spdlog::error("KCP send failed: {}", ret);
         std::lock_guard<std::mutex> lock(kcpMutex_);
         //send a 4-bytes data so that the receiver know how much data is coming
-        uint32_t len = static_cast<uint32_t>(chunk.payloadSize);
-        ikcp_send(kcp_, reinterpret_cast<const char *>(&len), 4);
-        int ret =ikcp_send(kcp_,reinterpret_cast<const char *>(chunk.data.data()), static_cast<int>(len));
-        if (ret <0) {
-            spdlog::error("KCP send failed: {}", ret);
+        uint32_t len = static_cast<uint32_t>(raw_payload.size());
+
+        raw_payload.insert(raw_payload.begin(), reinterpret_cast<std::byte*>(&len), reinterpret_cast<std::byte*>(&len) + 4);
+
+        int total_size = static_cast<int>(raw_payload.size());
+        const char* ptr = reinterpret_cast<const char*>(raw_payload.data());
+        int sent = 0;
+        int max_send_size = 128 * 1024; // 128 KB max per ikcp_send to respect IKCP_WND_RCV limit
+
+        while (sent < total_size) {
+            int to_send = std::min(max_send_size, total_size - sent);
+            int ret = ikcp_send(kcp_, ptr + sent, to_send);
+            if (ret < 0) {
+                spdlog::error("KCP send failed: {}", ret);
+                break;
+            }
+            sent += to_send;
         }
 
+    }
+    int KCPTransport::get_wait_snd() {
+        std::lock_guard<std::mutex> lock(kcpMutex_);
+        return kcp_ ? ikcp_waitsnd(kcp_) : 0;
     }
 
     void KCPTransport::setRecvCallback(onChunkReceived cb) {
@@ -122,6 +138,7 @@ namespace sxaint::net {
         ioctlsocket(socket_, FIONBIO, &mode);
         bool address_locked = false;
         while (running_) {
+            bool active = false;
             auto now = static_cast<IUINT32>(std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()).count());
             sockaddr_in sender_addr{};
@@ -137,12 +154,15 @@ namespace sxaint::net {
                         remote_addr_ = sender_addr;
                         address_locked = true;
                     }
+                    active = true;
                 }else break;
 
             }
+            int pending_snd = 0;
             {
                 std::lock_guard<std::mutex> lock(kcpMutex_);
                 ikcp_update(kcp_,now);
+                if (kcp_) pending_snd = ikcp_waitsnd(kcp_);
             }
             //reassembled
             while (true) {
@@ -151,6 +171,7 @@ namespace sxaint::net {
                 kcpMutex_.unlock();
                 //std::lock_guard<std::mutex> lock(kcpMutex_);
                 if (size>0) {
+                    active = true;
                     byteReceived_ += size;
                     stream_buffer.insert(stream_buffer.end(),
                         reinterpret_cast<std::byte*>(recv_buf.data()),
@@ -175,7 +196,11 @@ namespace sxaint::net {
                     break;
                 }
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            if (!active && pending_snd == 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            } else {
+                std::this_thread::yield();
+            }
 
 
         }

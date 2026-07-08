@@ -6,7 +6,8 @@
 #include <future>
 #include <atomic>
 #include "include/net/session.h"
-
+#include <windows.h>
+#include <shellapi.h>
 using  namespace sxaint;
 // void setup_logging() {
 //     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
@@ -16,15 +17,31 @@ using  namespace sxaint;
 //     spdlog::set_level(spdlog::level::debug);
 // }
 int main(int argc, char* argv[]) {
+    std::string mode;
+    std::filesystem::path target_path;
     // setup_logging();
+
+#ifdef _WIN32
+    int wargc;
+    LPWSTR* wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+    if (wargc < 3) {
+        spdlog::error("Usage: Sxaint.exe send <file_path> OR receive <outut_dir>");
+        return 1;
+    }
+    std::wstring wmode = wargv[1];
+    mode = std::string(wmode.begin(), wmode.end());
+    target_path = std::filesystem::path(wargv[2]);
+    LocalFree(wargv);
+#else
     if (argc<3) {
         std::cerr <<"Usage:\n";
         std::cerr <<"     Sender: Sxaint.exe receive <>output_directory>\n";
         std::cerr <<"     Receiver: sxaint.exe send <file_path> \n";
         return 1;
     }
-    std::string mode = argv[1];
-    std::string path = argv[2];
+    mode= argv[1];
+    target_path = std::filesystem::path(argv[2]);
+#endif
 
     const uint16_t DATA_PORT = 9000;
     const uint16_t DISCOVERY_PORT = 9001;
@@ -34,7 +51,7 @@ int main(int argc, char* argv[]) {
         discovery.start(DISCOVERY_PORT, "Sxaint-Receiver");
 
         net::Session session; //ready the kcp
-        session.recvFile(path, DATA_PORT);
+        session.recvFile(target_path, DATA_PORT);
     }else if (mode == "send") {
         net::Discovery discovery;
         std::promise<std::string> peer_promise;
@@ -61,7 +78,7 @@ int main(int argc, char* argv[]) {
         }
         discovery.stop();
         net::Session session;
-        session.sendFile(path, target_ip, DATA_PORT);
+        session.sendFile(target_path, target_ip, DATA_PORT);
     }else {
         spdlog::error("unknown mode: {}. use 'send' or 'recv'", mode);
         return  1;

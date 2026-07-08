@@ -19,7 +19,7 @@ namespace sxaint::core {
         FileMapper& operator= (const FileMapper&) = delete;
         FileMapper(FileMapper&& other) noexcept;
         FileMapper& operator = (FileMapper&& other) noexcept;
-        static  void preallocate_file(const std::filesystem::path& path,uint64_t size);
+        static void preallocate_file(const std::filesystem::path& path, uint64_t size);
         std::span<const std::byte> map_read(const std::filesystem::path& path, uint64_t offset, size_t length);
         std::span<std::byte> map_write(const std::filesystem::path& path,uint64_t offset, size_t length);
         void unmap();

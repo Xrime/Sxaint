@@ -20,8 +20,8 @@ namespace sxaint::net {
     public:
         struct Config {
             uint32_t conv_id = 0x11223344;
-            int send_wnd = 1024;
-            int recv_wnd = 1024;
+            int send_wnd = 16384;
+            int recv_wnd = 16384;
             int nodelay = 1;
             int interval = 10;
             int resend = 2;
@@ -37,12 +37,13 @@ namespace sxaint::net {
         };
         KCPTransport();
         ~KCPTransport();
-
+        int get_wait_snd();
         KCPTransport(const KCPTransport&) = delete;
         KCPTransport& operator =(const KCPTransport&) = delete;
         void connect(const std::string& host, uint16_t port, const Config& config = Config{});
         void listen(uint16_t port, const Config& config = Config{});
-        void sendChunk(const core::Chunk& chunk);
+        // void sendChunk(const core::Chunk& chunk);
+        void sendChunk(std::vector<std::byte>&& raw_payload);
         using onChunkReceived = std::function<void(std::vector<std::byte>&&)>;
         void setRecvCallback(onChunkReceived cb);
         Stats get_stats() const;

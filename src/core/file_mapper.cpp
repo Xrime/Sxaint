@@ -2,10 +2,12 @@
 // Created by xint2 on 03/07/2026.
 //
 #include "..//include/core/file_mapper.h"
+#include <windows.h>
 #include <spdlog/spdlog.h>
 
 
 namespace sxaint::core {
+
     FileMapper::~FileMapper() {
         cleanup();
     }
@@ -53,17 +55,24 @@ namespace sxaint::core {
             FILE_ATTRIBUTE_NORMAL,
             nullptr
         );
+
         if (hFile == INVALID_HANDLE_VALUE) {
             throw std::runtime_error("Failed to create file for preallocation");
         }
+
+        // --- ENTERPRISE FIX: SET SPARSE FLAG ---
+        // Tells Windows NOT to write 6.5GB of zeroes to the physical disk.
+        DWORD bytesReturned = 0;
+        DeviceIoControl(hFile, FSCTL_SET_SPARSE, nullptr, 0, nullptr, 0, &bytesReturned, nullptr);
+        // ---------------------------------------
+
         LARGE_INTEGER lisize;
         lisize.QuadPart = size;
-        SetFilePointerEx(hFile, lisize,nullptr,FILE_BEGIN);
+        SetFilePointerEx(hFile, lisize, nullptr, FILE_BEGIN);
         SetEndOfFile(hFile);
         CloseHandle(hFile);
 
-        spdlog::debug("Preallocated File {} with size {} bytes", path.string(),size);
-
+        spdlog::info("Preallocated Sparse File {} with size {} bytes", path.filename().string(), size);
     }
     std::span<const std::byte> FileMapper::map_read(const std::filesystem::path &path, uint64_t offset, size_t length) {
         cleanup();

@@ -29,36 +29,43 @@ namespace sxaint::net {
         hs.file_size = file_size;
         hs.chunk_size = core::Chunker::kDefaultChunkSize;
 
-        auto chunks = core::Chunker::slice(file_view, hs.chunk_size);
-        hs.total_chunks = static_cast<uint32_t>(chunks.size());
+        // auto chunks = core::Chunker::slice(file_view, hs.chunk_size);
+        hs.total_chunks = static_cast<uint32_t>((file_size + hs.chunk_size-1)/hs.chunk_size);// cacl the chunks
 
-        std::string filename = file_path.filename().string();
+        auto u8_name= file_path.filename().u8string();
+        std::string filename(u8_name.begin(), u8_name.end());
         std::strncpy(hs.file_name, filename.c_str(), sizeof(hs.file_name)-1);
 
         core::Chunk hs_chunk{};
-        hs_chunk.payloadSize = sizeof(handshake);
-        hs_chunk.data = std::span<const std::byte>(reinterpret_cast<const std::byte*>(&hs), sizeof(handshake));
-        transport_.sendChunk(hs_chunk);
+        // hs_chunk.payloadSize = sizeof(handshake);
+        // hs_chunk.data = std::span<const std::byte>(reinterpret_cast<const std::byte*>(&hs), sizeof(handshake));
+        // transport_.sendChunk(hs_chunk);
+        std::vector<std::byte> hs_buffer(sizeof(handshake));
+        std::memcpy(hs_buffer.data(), &hs, sizeof(handshake));
+        transport_.sendChunk(std::move(hs_buffer));
         spdlog::info("handshake sent. Waiting for receiver to acknowledge resume state");
         while (!handshake_acked_) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
-
+        spdlog::info("ACK recv.Slicing file for transfer");
+        auto chunks = core::Chunker::slice(file_view, hs.chunk_size);
         auto sample_size = std::min<size_t>(4096, file_size);
         auto strategy = core::smartCompressor::detect(file_path, std::span<const std::byte>(file_view.data(), sample_size));
 
         std::vector<std::future<void>> futures;
         uint32_t skipped_chunks = 0;
-
         for (const auto& chunk : chunks) {
 
             if (chunk.id < resume_bitfield_.size() && resume_bitfield_[chunk.id]) {
                 skipped_chunks++;
                 chunks_sent_++;
-                continue;
             }
-            // CRITICAL FIX: Extract primitive types so MinGW doesn't corrupt the memory inside the thread
+
+            while (transport_.get_wait_snd() > 65536) {
+                std::this_thread::yield();
+            }
+
             uint32_t c_id = chunk.id;
             uint32_t c_size = chunk.payloadSize;
             uint32_t c_crc32 = chunk.crc32;
@@ -87,13 +94,15 @@ namespace sxaint::net {
 
                     // Safely copy header to buffer
                     std::memcpy(wireBuffer.data(), &header, sizeof(chunkWireHeader));
+                    wireBuffer.resize(sizeof(chunkWireHeader)+ header.compressed_size);
+                    // core::Chunk net_chunk{};
+                    // net_chunk.payloadSize = sizeof(chunkWireHeader) + header.compressed_size;
+                    // net_chunk.data = std::span<const std::byte>(wireBuffer.data(), net_chunk.payloadSize);
+                    //
+                    // transport_.sendChunk(net_chunk);
+                    transport_.sendChunk(std::move(wireBuffer));
 
-                    core::Chunk net_chunk{};
-                    net_chunk.payloadSize = sizeof(chunkWireHeader) + header.compressed_size;
-                    net_chunk.data = std::span<const std::byte>(wireBuffer.data(), net_chunk.payloadSize);
-
-                    transport_.sendChunk(net_chunk);
-                    chunks_sent_++;
+                    chunks_sent_.fetch_add(1, std::memory_order_relaxed);
                 } catch (const std::exception& e) {
                     spdlog::error("Thread error: {}", e.what());
                 }
@@ -149,7 +158,13 @@ namespace sxaint::net {
                 // Safely read unaligned memory
                 handshake hs{};
                 std::memcpy(&hs, data.data(), sizeof(handshake));
-                processHandshake(&hs);
+                thread_pool_.submit([this, hs]() {
+                    try {
+                        processHandshake(&hs);
+                    }catch (const std::exception& e) {
+                        spdlog::error("Handshake thread error: {}", e.what());
+                    }
+                });
             }
         }else if (type == messageType::handshakeAck){
             processHandshakeACk(data);
@@ -177,40 +192,36 @@ namespace sxaint::net {
     }
 
     void Session::processHandshake(const handshake *hs) {
-
         current_filename_ = hs->file_name;
         expectedChunks_ = hs->total_chunks;
+        std::u8string u8_target(current_filename_.begin(), current_filename_.end());
+        std::filesystem::path safe_filename(u8_target);
         auto target_path = output_dir_ / current_filename_;
-        auto manifest_path = output_dir_/(current_filename_+ ".manifest");
 
-        if (!core::transferManifest::load(manifest_path, current_manifest_)) {
-            current_manifest_.fileHash = current_filename_;
-            current_manifest_.fileSize = hs->file_size;
-            current_manifest_.chunk_size = hs->chunk_size;
-            current_manifest_.total_chunks = hs->total_chunks;
-            current_manifest_.completedChunks.assign(hs->total_chunks,false);
-            chunks_recv_ = 0;
-            spdlog::info("Handshake: {} ({} bytes, {} chunks)", hs->file_name, hs->file_size, hs->total_chunks);
-        }else {
-            chunks_recv_= std::count(current_manifest_.completedChunks.begin(),current_manifest_.completedChunks.end(), true);
-            spdlog::info("Resuming {}, found {} /{} completed chunks.", current_filename_, chunks_recv_.load(), expectedChunks_.load());
-            if (current_manifest_.is_complete()) trans_complete_=true;
-        }
+        current_manifest_.fileHash = current_filename_;
+        current_manifest_.fileSize = hs->file_size;
+        current_manifest_.chunk_size = hs->chunk_size;
+        current_manifest_.total_chunks = hs->total_chunks;
+        current_manifest_.completedChunks.assign(hs->total_chunks, false);
+        chunks_recv_ = 0;
+        
+        spdlog::info("Handshake: {} ({} bytes, {} chunks)", hs->file_name, hs->file_size, hs->total_chunks);
+        spdlog::info("Instantly allocating {} via Sparse File...", current_filename_);
+        
         core::FileMapper::preallocate_file(target_path, hs->file_size);
+
+        // Unconditionally map the file
         write_view_ = file_mapper_.map_write(target_path, 0, hs->file_size);
 
         auto packed_bits = current_manifest_.pack_bitfield();
         std::vector<std::byte> ack_buffer(sizeof(handshakeAck) + packed_bits.size());
         handshakeAck ack{};
-        ack.type= static_cast<uint8_t>(messageType::handshakeAck);
+        ack.type = static_cast<uint8_t>(messageType::handshakeAck);
         ack.total_chunks = hs->total_chunks;
         std::memcpy(ack_buffer.data(), &ack, sizeof(handshakeAck));
-        std::memcpy(ack_buffer.data()+sizeof(handshakeAck), packed_bits.data(),packed_bits.size());
+        std::memcpy(ack_buffer.data() + sizeof(handshakeAck), packed_bits.data(), packed_bits.size());
 
-        core::Chunk ack_chunk{};
-        ack_chunk.payloadSize = ack_buffer.size();
-        ack_chunk.data = std::span<const std::byte>(ack_buffer.data(), ack_buffer.size());
-        transport_.sendChunk(ack_chunk);
+        transport_.sendChunk(std::move(ack_buffer));
     }
     void Session::processHandshakeACk(const std::vector<std::byte> &data) {
         if (data.size()< sizeof(handshakeAck)) return;
@@ -228,11 +239,13 @@ namespace sxaint::net {
 
 
     void Session::processChunk(const chunkWireHeader *header, std::span<const std::byte> payload) {
-        if (write_view_.empty()) return;
-
+        if (write_view_.empty()) {
+            spdlog::error("Write view is empty, dropping chunk {}", header->chunk_id);
+            return;
+        }
         size_t offset = static_cast<size_t>(header->chunk_id) * core::Chunker::kDefaultChunkSize;
-        if (offset + header->original_size > write_view_.size()) return;
 
+        if (offset + header->original_size > write_view_.size()) return;
         std::span<std::byte> target_span(write_view_.data() + offset, header->original_size);
         auto strategy = static_cast<core::smartCompressor::Strategy>(header->compress_stra);
 
@@ -247,18 +260,13 @@ namespace sxaint::net {
             std::lock_guard<std::mutex> lock(manifest_mutex_);
             if (!current_manifest_.completedChunks[header->chunk_id]) {
                 current_manifest_.completedChunks[header->chunk_id] = true;
-                if (chunks_recv_ % 50 == 0) {
-                    current_manifest_.save(
-                        output_dir_/ (current_filename_+ ".manifest"));
-                }
             }
         }
-        uint32_t received = ++chunks_recv_;
+        uint32_t received = chunks_recv_.fetch_add(1,std::memory_order_relaxed)+1;
         int percent = (received * 100)/ expectedChunks_;
         std::cout << "\r[RECEIVER] [" << std::string(percent / 2, '=') << std::string(50 - percent / 2, ' ') << "] " << percent << "% " << std::flush;
         if (received == expectedChunks_) {
             std::cout<< "\n";
-            current_manifest_.save(output_dir_/ (current_filename_+ ".manifest"));
             trans_complete_= true;
         }
     }
