@@ -21,6 +21,7 @@ namespace sxaint::net {
         spdlog::info("Starting sender session for {}", file_path.filename().string());
 
         uint64_t file_size = std::filesystem::file_size(file_path);
+        metrics_ = std::make_unique<core::transferMetrics>(file_size);
         auto file_view = file_mapper_.map_read(file_path, 0, file_size);
 
         transport_.connect(target_ip, port);
@@ -52,6 +53,7 @@ namespace sxaint::net {
         auto chunks = core::Chunker::slice(file_view, hs.chunk_size);
         auto sample_size = std::min<size_t>(4096, file_size);
         auto strategy = core::smartCompressor::detect(file_path, std::span<const std::byte>(file_view.data(), sample_size));
+        spdlog::info("Compression strategy selected: {}", static_cast<int>(strategy));
 
         std::vector<std::future<void>> futures;
         uint32_t skipped_chunks = 0;
@@ -62,8 +64,8 @@ namespace sxaint::net {
                 chunks_sent_++;
             }
 
-            while (transport_.get_wait_snd() > 65536) {
-                std::this_thread::yield();
+            while (transport_.get_wait_snd() > 32000) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
 
             uint32_t c_id = chunk.id;
@@ -103,6 +105,9 @@ namespace sxaint::net {
                     transport_.sendChunk(std::move(wireBuffer));
 
                     chunks_sent_.fetch_add(1, std::memory_order_relaxed);
+                    if (metrics_) {
+                        metrics_->add_bytes(c_size);
+                    }
                 } catch (const std::exception& e) {
                     spdlog::error("Thread error: {}", e.what());
                 }
@@ -121,16 +126,29 @@ namespace sxaint::net {
             spdlog::info("Resuming Transfer: Skipped {} chunks that already exist.", skipped_chunks);
         }
         uint32_t total = chunks.size();
-        while (chunks_sent_ <total) {
-            int percent = (chunks_sent_ * 100)/total;
-            std::cout << "\r[SENDER]   [" << std::string(percent / 2, '#') << std::string(50 - percent / 2, ' ') << "] " << percent << "% " << std::flush;
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        while (chunks_sent_ < total) {
+            // int percent = (chunks_sent_ * 100)/total;
+            // std::cout << "\r[SENDER]   [" << std::string(percent / 2, '#') << std::string(50 - percent / 2, ' ') << "] " << percent << "% " << std::flush;
+            // std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+            if (metrics_) {
+                std::cout << "\r"<<filename << " "<< metrics_->get_ui_string()<< std::flush;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         }
-        std::cout << "\r[SENDER]   [" << std::string(50, '#') << "] 100%\n" << std::flush;
-        for (auto& f :futures) {
-            f.get();
+        if (metrics_) {
+            std::cout<<"\r"<< filename<<" "<<metrics_->get_ui_string()<<"\n"<< std::flush;
         }
+        for (auto& f : futures) {
+            if (f.valid()) {
+                f.get();
+            }
+        }
+        // std::cout << "\r[SENDER]   [" << std::string(50, '#') << "] 100%\n" << std::flush;
+        // for (auto& f :futures) {
+        //     f.get();
+        // }
         spdlog::info("Transfer complete. Closing buffers.");
     }
 
@@ -194,6 +212,7 @@ namespace sxaint::net {
     void Session::processHandshake(const handshake *hs) {
         current_filename_ = hs->file_name;
         expectedChunks_ = hs->total_chunks;
+        metrics_ = std::make_unique<core::transferMetrics>(hs->file_size);
         std::u8string u8_target(current_filename_.begin(), current_filename_.end());
         std::filesystem::path safe_filename(u8_target);
         auto target_path = output_dir_ / current_filename_;
@@ -262,9 +281,18 @@ namespace sxaint::net {
                 current_manifest_.completedChunks[header->chunk_id] = true;
             }
         }
-        uint32_t received = chunks_recv_.fetch_add(1,std::memory_order_relaxed)+1;
-        int percent = (received * 100)/ expectedChunks_;
-        std::cout << "\r[RECEIVER] [" << std::string(percent / 2, '=') << std::string(50 - percent / 2, ' ') << "] " << percent << "% " << std::flush;
+        // uint32_t received = chunks_recv_.fetch_add(1,std::memory_order_relaxed)+1;
+        // int percent = (received * 100)/ expectedChunks_;
+        // std::cout << "\r[RECEIVER] [" << std::string(percent / 2, '=') << std::string(50 - percent / 2, ' ') << "] " << percent << "% " << std::flush;
+        if (metrics_) {
+            metrics_->add_bytes(header->original_size);
+
+        }
+        uint32_t received =chunks_recv_.fetch_add(1,std::memory_order_relaxed)+1;
+        if (metrics_) {
+            std::cout << "\r" << current_filename_<< " " <<metrics_->get_ui_string() <<std::flush;
+
+        }
         if (received == expectedChunks_) {
             std::cout<< "\n";
             trans_complete_= true;

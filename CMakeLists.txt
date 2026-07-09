@@ -49,6 +49,8 @@ add_executable(Sxaint main.cpp
         src/net/discovery.cpp
         include/core/manifest.h
         src/core/manifest.cpp
+        include/core/metrics.h
+        src/core/metrics.cpp
 )
 target_link_libraries(Sxaint PRIVATE sxaint_core)
 if(WIN32)

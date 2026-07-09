@@ -14,6 +14,8 @@
 #include <memory>
 #include <mutex>
 #include <future>
+#include "../core/metrics.h"
+
 
 namespace sxaint::net {
     class Session {
@@ -47,6 +49,8 @@ namespace sxaint::net {
         std::vector<bool> resume_bitfield_;
         core::transferManifest current_manifest_;
         std::mutex manifest_mutex_;
+        std::unique_ptr<core::transferMetrics> metrics_;
+
     };
 }
 #endif //SXAINT_SESSION_H

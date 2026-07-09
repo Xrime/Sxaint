@@ -49,7 +49,7 @@ namespace sxaint::net {
         if (socket_ == INVALID_SOCKET) {
             throw std::runtime_error("failed to create UdP socket");
         }
-        int buf_size = 8*1024*1024;
+        int buf_size = 32*1024*1024;
         setsockopt(socket_, SOL_SOCKET, SO_RCVBUF, reinterpret_cast<char*>(&buf_size), sizeof(buf_size));
         setsockopt(socket_, SOL_SOCKET, SO_SNDBUF, reinterpret_cast<char*>(&buf_size),sizeof (buf_size));
 
@@ -57,6 +57,9 @@ namespace sxaint::net {
         remote_addr_.sin_port = htons(port);
         inet_pton(AF_INET, host.c_str(), &remote_addr_.sin_addr);
         kcp_ = ikcp_create(config.conv_id, this);
+        ikcp_nodelay(kcp_, 1,10,2,1);
+        ikcp_wndsize(kcp_, 4096, 4096);
+        ikcp_setmtu(kcp_, 1400);
         kcp_->output = kcpOutputCallback;
         kcp_->stream = 1;
 
@@ -72,7 +75,7 @@ namespace sxaint::net {
         if (socket_ ==INVALID_SOCKET) {
             throw std::runtime_error("Failed to create UDP socket");
         }
-        int buf_size = 8*1024*1024;
+        int buf_size = 32*1024*1024;
         setsockopt(socket_,SOL_SOCKET, SO_RCVBUF, reinterpret_cast<char*>(&buf_size), sizeof(buf_size));
         setsockopt(socket_, SOL_SOCKET, SO_SNDBUF, reinterpret_cast<char*>(&buf_size), sizeof(buf_size));
 
@@ -86,6 +89,9 @@ namespace sxaint::net {
 
         }
         kcp_ = ikcp_create(config.conv_id, this);
+        ikcp_nodelay(kcp_, 1,10,2,1);
+        ikcp_wndsize(kcp_, 4096, 4096);
+        ikcp_setmtu(kcp_, 1400);
         kcp_->output= kcpOutputCallback;
         kcp_->stream = 1;
         ikcp_nodelay(kcp_, config.nodelay, config.interval, config.resend, config.nc);
@@ -97,12 +103,6 @@ namespace sxaint::net {
         spdlog::info("KCP transport listen on port{}", port);
     }
     void KCPTransport::sendChunk(std::vector<std::byte> &&raw_payload) {
-        // //later to tag chunk header to data, fornoew raw date
-        // int ret = ikcp_send(kcp_, reinterpret_cast<const char *>(chunk.data.data()), static_cast<int>(chunk.payloadSize));
-        // if (ret < 0) {
-        //     spdlog::error("KCP send failed: {}", ret);
-        std::lock_guard<std::mutex> lock(kcpMutex_);
-        //send a 4-bytes data so that the receiver know how much data is coming
         uint32_t len = static_cast<uint32_t>(raw_payload.size());
 
         raw_payload.insert(raw_payload.begin(), reinterpret_cast<std::byte*>(&len), reinterpret_cast<std::byte*>(&len) + 4);
@@ -114,14 +114,17 @@ namespace sxaint::net {
 
         while (sent < total_size) {
             int to_send = std::min(max_send_size, total_size - sent);
-            int ret = ikcp_send(kcp_, ptr + sent, to_send);
-            if (ret < 0) {
-                spdlog::error("KCP send failed: {}", ret);
-                break;
+            {
+                std::lock_guard<std::mutex> lock(kcpMutex_);
+                int ret = ikcp_send(kcp_, ptr + sent, to_send);
+                ikcp_flush(kcp_);
+                if (ret < 0) {
+                    spdlog::error("KCP send failed: {}", ret);
+                    break;
+                }
             }
             sent += to_send;
         }
-
     }
     int KCPTransport::get_wait_snd() {
         std::lock_guard<std::mutex> lock(kcpMutex_);
@@ -150,6 +153,7 @@ namespace sxaint::net {
                 if (bytes_read >0) {
                     std::lock_guard<std::mutex> lock(kcpMutex_);
                     ikcp_input(kcp_, recv_buf.data(), bytes_read);
+                    ikcp_flush(kcp_);
                     if (!address_locked && remote_addr_.sin_family == 0) {
                         remote_addr_ = sender_addr;
                         address_locked = true;
@@ -197,11 +201,10 @@ namespace sxaint::net {
                 }
             }
             if (!active && pending_snd == 0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(2));
-            } else {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            } else if (!active) {
                 std::this_thread::yield();
             }
-
 
         }
     }
