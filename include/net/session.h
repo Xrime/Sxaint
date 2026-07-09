@@ -15,6 +15,7 @@
 #include <mutex>
 #include <future>
 #include "../core/metrics.h"
+#include "../core/crypto.h"
 
 
 namespace sxaint::net {
@@ -28,6 +29,7 @@ namespace sxaint::net {
         void recvFile(const std::filesystem::path& output_dir, uint16_t port);// run as receiver
 
     private:
+        std::vector<std::byte> aes_key_;
         void handleRecv(std::vector<std::byte>&& data);
         void processHandshake(const handshake* hs);
         void processHandshakeACk(const std::vector<std::byte>& data);

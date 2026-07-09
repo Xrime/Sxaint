@@ -31,6 +31,7 @@ namespace sxaint::net {
         handshake hs{};
         hs.type = static_cast<uint8_t>(messageType::handshake);
         hs.pin = pin;
+        aes_key_ = core::Crypto::derive_key(pin);
         hs.file_size = file_size;
         hs.chunk_size = core::Chunker::kDefaultChunkSize;
 
@@ -56,7 +57,7 @@ namespace sxaint::net {
             spdlog::error("Transfer aborted. The PIN you entered was incorrect. ");
             return;
         }
-        
+
 
         spdlog::info("ACK recv.Slicing file for transfer");
         auto chunks = core::Chunker::slice(file_view, hs.chunk_size);
@@ -98,19 +99,18 @@ namespace sxaint::net {
 
                     // Safely reconstruct the span locally inside the thread
                     std::span<const std::byte> safe_in_payload(c_data_ptr, c_size);
-
-                    header.compressed_size = static_cast<uint32_t>(
-                        core::smartCompressor::compress(safe_in_payload, out_payload, strategy)
-                    );
-
+                    uint32_t compressed_bytes = static_cast<uint32_t>(
+                        core::smartCompressor::compress(safe_in_payload, out_payload,strategy)
+                        );
+                    header.compressed_size = compressed_bytes;
+                    std::span<const std::byte> compressed_payload(out_payload.data(), header.compressed_size);
+                    auto encrypted_payload =core::Crypto::encrypt(compressed_payload,aes_key_,c_id);
+                    header.compressed_size = static_cast<uint32_t>(encrypted_payload.size());
+                    wireBuffer.resize(sizeof(chunkWireHeader)+encrypted_payload.size());
                     // Safely copy header to buffer
                     std::memcpy(wireBuffer.data(), &header, sizeof(chunkWireHeader));
+                    std::memcpy(wireBuffer.data() + sizeof(chunkWireHeader), encrypted_payload.data(), encrypted_payload.size());
                     wireBuffer.resize(sizeof(chunkWireHeader)+ header.compressed_size);
-                    // core::Chunk net_chunk{};
-                    // net_chunk.payloadSize = sizeof(chunkWireHeader) + header.compressed_size;
-                    // net_chunk.data = std::span<const std::byte>(wireBuffer.data(), net_chunk.payloadSize);
-                    //
-                    // transport_.sendChunk(net_chunk);
                     transport_.sendChunk(std::move(wireBuffer), stream_id);
                     chunks_sent_.fetch_add(1, std::memory_order_relaxed);
                     if (metrics_) {
@@ -122,14 +122,6 @@ namespace sxaint::net {
             }));
         }
 
-        // Wait safely until all background threads finish compressing
-        // for (auto& f : futures) {
-        //     f.get();
-        // }
-        //
-        // spdlog::info("All chunks dispatched to network. waiting for ACKs...");
-        // std::this_thread::sleep_for(std::chrono::seconds(2));
-        // spdlog::info("transfer complete.");
         if (skipped_chunks>0) {
             spdlog::info("Resuming Transfer: Skipped {} chunks that already exist.", skipped_chunks);
         }
@@ -237,6 +229,7 @@ namespace sxaint::net {
             transport_.sendChunk(std::move(reject_buffer), 0);
             return;
         }
+        aes_key_ = core::Crypto::derive_key(expected_pin_);
         current_filename_ = hs->file_name;
         expectedChunks_ = hs->total_chunks;
         metrics_ = std::make_unique<core::transferMetrics>(hs->file_size);
@@ -295,7 +288,16 @@ namespace sxaint::net {
         std::span<std::byte> target_span(write_view_.data() + offset, header->original_size);
         auto strategy = static_cast<core::smartCompressor::Strategy>(header->compress_stra);
 
-        core::smartCompressor::decompress(payload, target_span, strategy);
+        // core::smartCompressor::decompress(payload, target_span, strategy);
+        std::vector<std::byte> decrypted_payload;
+        try {
+            decrypted_payload = core::Crypto::decrypt(payload,aes_key_,header->chunk_id);
+
+        }catch (const std::exception& e) {
+            spdlog::error("INSECURE or corrupted chunk {} :{}", header->chunk_id, e.what());
+            return;
+        }
+        core::smartCompressor::decompress(decrypted_payload,target_span, strategy);
 
         uint32_t computed_crc = core::Hasher::crc32(target_span);
         if (computed_crc != header->crc32) {

@@ -4,7 +4,7 @@ project(Sxaint)
 set(CMAKE_CXX_STANDARD 20)
 
 find_package(PkgConfig REQUIRED)
-
+find_package(OpenSSL REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(zstd CONFIG REQUIRED)
@@ -51,9 +51,12 @@ add_executable(Sxaint main.cpp
         src/core/manifest.cpp
         include/core/metrics.h
         src/core/metrics.cpp
+        include/core/crypto.h
+        src/core/crypto.cpp
 )
 target_link_libraries(Sxaint PRIVATE sxaint_core)
 if(WIN32)
     target_link_libraries(Sxaint PRIVATE ws2_32)
 endif()
+target_link_libraries(Sxaint PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 

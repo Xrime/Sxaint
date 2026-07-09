@@ -31,7 +31,7 @@ GAR.exe [=============================           ] 73% | 72.0 MB/s | ETA: 1s
 GAR.exe [==============================          ] 77% | 58.7 MB/s | ETA: 1s
 [2026-07-09 08:56:57.709] [info] Transfer complete. Closing buffers.
 
-
+test2
 C:\Users\xint2\CLionProjects\Sxaint\cmake-build-debug\Sxaint.exe send "C:\Users\xint2\Downloads\GAR 1.0.1\GAR.exe"
 [2026-07-09 11:01:56.522] [info] Scanning local network for recv
 [2026-07-09 11:01:56.558] [info] Discovery service. Broadcasting as 'Sxaint-Sender'
@@ -61,6 +61,22 @@ GAR.exe [==========================              ] 67% | 99.5 MB/s | ETA: 1ss
 GAR.exe [============================            ] 70% | 99.5 MB/s | ETA: 1ss
 GAR.exe [=================================       ] 83% | 95.4 MB/s | ETA: 0ss
 [2026-07-09 11:02:12.813] [info] Transfer complete. Closing buffers.
+
+Process finished with exit code 0
+
+test 3
+C:\Users\xint2\CLionProjects\Sxaint\cmake-build-debug\Sxaint.exe send "C:\Users\xint2\Downloads\GAR 1.0.1\GAR.exe"
+[2026-07-09 13:13:04.194] [info] Scanning local network for recv
+[2026-07-09 13:13:04.201] [info] Discovery service. Broadcasting as 'Sxaint-Sender'
+[2026-07-09 13:13:07.239] [warning] No Wi-Fi peers found. Defaulting to local machine (127.0.0.1)
+
+ Enter the 6-digit PIN displayed on the Receiver:114000
+
+[2026-07-09 13:13:20.171] [info] Starting sender session for GAR.exe
+[2026-07-09 13:13:20.172] [info] KCP Transport connected to 127.0.0.1:9000
+[2026-07-09 13:13:20.173] [info] handshake sent. Waiting for receiver to acknowledge resume state
+[2026-07-09 13:13:20.207] [error] handshake REJECTED by Receiver! Incorrect PIN.
+[2026-07-09 13:13:20.221] [error] Transfer aborted. The PIN you entered was incorrect.
 
 Process finished with exit code 0
 
