@@ -63,7 +63,7 @@ namespace sxaint::net {
                 skipped_chunks++;
                 chunks_sent_++;
             }
-
+            uint32_t stream_id = chunk.id % 4;
             while (transport_.get_wait_snd() > 32000) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(2));
             }
@@ -73,7 +73,7 @@ namespace sxaint::net {
             uint32_t c_crc32 = chunk.crc32;
             const std::byte* c_data_ptr = chunk.data.data();
 
-            futures.push_back(thread_pool_.submit([this, strategy, c_id, c_size, c_crc32, c_data_ptr]() {
+            futures.push_back(thread_pool_.submit([this, strategy, c_id, c_size, c_crc32, c_data_ptr, stream_id]() {
                 try {
                     size_t max_bound = core::smartCompressor::get_compress_bound(c_size, strategy);
                     std::vector<std::byte> wireBuffer(sizeof(chunkWireHeader) + max_bound);
@@ -102,8 +102,7 @@ namespace sxaint::net {
                     // net_chunk.data = std::span<const std::byte>(wireBuffer.data(), net_chunk.payloadSize);
                     //
                     // transport_.sendChunk(net_chunk);
-                    transport_.sendChunk(std::move(wireBuffer));
-
+                    transport_.sendChunk(std::move(wireBuffer), stream_id);
                     chunks_sent_.fetch_add(1, std::memory_order_relaxed);
                     if (metrics_) {
                         metrics_->add_bytes(c_size);

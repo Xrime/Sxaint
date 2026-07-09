@@ -2,7 +2,7 @@
 // Created by xint2 on 04/07/2026.
 //
 #include "../include/net/transport.h"
-#include <ikcp.h>
+#include "ikcp.h"
 #include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <chrono>
@@ -13,12 +13,18 @@ namespace sxaint::net {
         init_winsock();
     }
     KCPTransport::~KCPTransport() {
-        running_ = false;
+         running_ = false;
         if (io_thread_.joinable()){
             io_thread_.join();
         }
-        if (kcp_) {
-            ikcp_release(kcp_);
+        // if (kcp_) {
+        //     ikcp_release(kcp_);
+        // }
+        for (int i = 0; i < kNumStreams; ++i) {
+            if (kcps_[i]) {
+                ikcp_release(kcps_[i]);
+                kcps_[i] = nullptr;
+            }
         }
         if (socket_ != INVALID_SOCKET) {
             closesocket(socket_);
@@ -35,12 +41,13 @@ namespace sxaint::net {
         }
 
     }int KCPTransport::kcpOutputCallback(const char *buf, int len, IKCPCB *kcp, void *user) {
-        auto* transport =static_cast<KCPTransport*>(user);
+        auto* pair = static_cast<std::pair<KCPTransport*, int>*> (user);
+        auto* transport =pair->first;
         int sent = sendto(transport->socket_, buf, len,0,
             reinterpret_cast<sockaddr*>(&transport->remote_addr_),
             sizeof(transport->remote_addr_));
         if (sent>0) {
-            transport->byteSent_ +=sent;
+            transport->byteSent_.fetch_add(sent, std::memory_order_relaxed);
         }
         return 0;
     }
@@ -56,16 +63,20 @@ namespace sxaint::net {
         remote_addr_.sin_family = AF_INET;
         remote_addr_.sin_port = htons(port);
         inet_pton(AF_INET, host.c_str(), &remote_addr_.sin_addr);
-        kcp_ = ikcp_create(config.conv_id, this);
-        ikcp_nodelay(kcp_, 1,10,2,1);
-        ikcp_wndsize(kcp_, 4096, 4096);
-        ikcp_setmtu(kcp_, 1400);
-        kcp_->output = kcpOutputCallback;
-        kcp_->stream = 1;
 
-        ikcp_nodelay(kcp_,config.nodelay,config.interval, config.resend, config.nc);
-        ikcp_wndsize(kcp_, config.send_wnd, config.recv_wnd);
-        ikcp_setmtu(kcp_, config.mtu);
+        for (int i = 0; i< kNumStreams; ++i) {
+            kcps_[i] = ikcp_create(config.conv_id+i, this);
+            ikcp_nodelay(kcps_[i], config.nodelay, config.interval, config.resend, config.nc);
+            ikcp_wndsize(kcps_[i], 4096, 4096);
+            ikcp_setmtu(kcps_[i], 16384);
+            kcps_[i]->user = new std::pair<KCPTransport*, int>(this,i);
+            kcps_[i]->output = kcpOutputCallback;
+            kcps_[i]->stream = 1;
+        }
+
+        // ikcp_nodelay(kcp_,config.nodelay,config.interval, config.resend, config.nc);
+        // ikcp_wndsize(kcp_, config.send_wnd, config.recv_wnd);
+        // ikcp_setmtu(kcp_, config.mtu);
         running_= true;
         io_thread_ = std::jthread(&KCPTransport::net_loop, this);
         spdlog::info("KCP Transport connected to {}:{}", host,port);
@@ -88,22 +99,28 @@ namespace sxaint::net {
             throw std::runtime_error("failed to bind UDP socket");
 
         }
-        kcp_ = ikcp_create(config.conv_id, this);
-        ikcp_nodelay(kcp_, 1,10,2,1);
-        ikcp_wndsize(kcp_, 4096, 4096);
-        ikcp_setmtu(kcp_, 1400);
-        kcp_->output= kcpOutputCallback;
-        kcp_->stream = 1;
-        ikcp_nodelay(kcp_, config.nodelay, config.interval, config.resend, config.nc);
-        ikcp_wndsize(kcp_,config.send_wnd, config.recv_wnd);
-        ikcp_setmtu(kcp_, config.mtu);
+
+        for (int i = 0; i< kNumStreams; ++i) {
+            kcps_[i] = ikcp_create(config.conv_id + i, this);
+            ikcp_nodelay(kcps_[i], config.nodelay, config.interval, config.resend, config.nc);
+            ikcp_wndsize(kcps_[i], 4096, 4096);
+            ikcp_setmtu(kcps_[i], 16384);
+            kcps_[i]->user = new std::pair<KCPTransport*, int>(this, i);
+            kcps_[i]->output = kcpOutputCallback;
+            kcps_[i]->stream = 1;
+        }
+        //
+        // ikcp_nodelay(kcp_, config.nodelay, config.interval, config.resend, config.nc);
+        // ikcp_wndsize(kcp_,config.send_wnd, config.recv_wnd);
+        // ikcp_setmtu(kcp_, config.mtu);
 
         running_= true;
         io_thread_ = std::jthread(&KCPTransport::net_loop, this);
         spdlog::info("KCP transport listen on port{}", port);
     }
-    void KCPTransport::sendChunk(std::vector<std::byte> &&raw_payload) {
+    void KCPTransport::sendChunk(std::vector<std::byte> &&raw_payload, uint32_t stream_id) {
         uint32_t len = static_cast<uint32_t>(raw_payload.size());
+        uint32_t s_id = stream_id % kNumStreams;
 
         raw_payload.insert(raw_payload.begin(), reinterpret_cast<std::byte*>(&len), reinterpret_cast<std::byte*>(&len) + 4);
 
@@ -114,21 +131,19 @@ namespace sxaint::net {
 
         while (sent < total_size) {
             int to_send = std::min(max_send_size, total_size - sent);
-            {
-                std::lock_guard<std::mutex> lock(kcpMutex_);
-                int ret = ikcp_send(kcp_, ptr + sent, to_send);
-                ikcp_flush(kcp_);
-                if (ret < 0) {
-                    spdlog::error("KCP send failed: {}", ret);
-                    break;
-                }
+            int ret = ikcp_send(kcps_[s_id], ptr + sent, to_send);
+            if (ret < 0) {
+                spdlog::error("KCP send failed: {}", ret);
+                break;
             }
             sent += to_send;
         }
+        ikcp_flush(kcps_[s_id]);
     }
-    int KCPTransport::get_wait_snd() {
-        std::lock_guard<std::mutex> lock(kcpMutex_);
-        return kcp_ ? ikcp_waitsnd(kcp_) : 0;
+    int KCPTransport::get_wait_snd(uint32_t stream_id) {
+        uint32_t s_id = stream_id % kNumStreams;
+        std::lock_guard<std::mutex> lock(kcpMutexes_[s_id]);
+        return kcps_[s_id] ? ikcp_waitsnd(kcps_[s_id]) : 0;
     }
 
     void KCPTransport::setRecvCallback(onChunkReceived cb) {
@@ -136,7 +151,7 @@ namespace sxaint::net {
     }
     void KCPTransport::net_loop() {
         std::vector<char> recv_buf(65536);
-        std::vector<std::byte> stream_buffer;
+        std::vector<std::byte> stream_buffer[kNumStreams];
         u_long mode =1;
         ioctlsocket(socket_, FIONBIO, &mode);
         bool address_locked = false;
@@ -148,65 +163,70 @@ namespace sxaint::net {
             int sender_len = sizeof(sender_addr);
 
             while (true) {
-                int bytes_read = recvfrom(socket_, recv_buf.data(), static_cast<int>(recv_buf.size()),0,
-                                            reinterpret_cast<sockaddr*>(&sender_addr), &sender_len);
-                if (bytes_read >0) {
-                    std::lock_guard<std::mutex> lock(kcpMutex_);
-                    ikcp_input(kcp_, recv_buf.data(), bytes_read);
-                    ikcp_flush(kcp_);
+                int bytes_read = recvfrom(socket_, recv_buf.data(), static_cast<int>(recv_buf.size()),0,reinterpret_cast<sockaddr*>(&sender_addr), &sender_len);
+                if (bytes_read > 4) {
+                    IUINT32 conv = ikcp_getconv(recv_buf.data());
+                    uint32_t s_id = conv % kNumStreams;
+                    std::lock_guard<std::mutex> lock(kcpMutexes_[s_id]);
                     if (!address_locked && remote_addr_.sin_family == 0) {
                         remote_addr_ = sender_addr;
                         address_locked = true;
                     }
+                    ikcp_input(kcps_[s_id], recv_buf.data(), bytes_read);
+                    ikcp_flush(kcps_[s_id]);
                     active = true;
-                }else break;
+                } else break;
 
             }
             int pending_snd = 0;
-            {
-                std::lock_guard<std::mutex> lock(kcpMutex_);
-                ikcp_update(kcp_,now);
-                if (kcp_) pending_snd = ikcp_waitsnd(kcp_);
-            }
-            //reassembled
-            while (true) {
-                kcpMutex_.lock();
-                int size = ikcp_recv(kcp_, recv_buf.data(), static_cast<int>(recv_buf.size()));
-                kcpMutex_.unlock();
-                //std::lock_guard<std::mutex> lock(kcpMutex_);
-                if (size>0) {
-                    active = true;
-                    byteReceived_ += size;
-                    stream_buffer.insert(stream_buffer.end(),
-                        reinterpret_cast<std::byte*>(recv_buf.data()),
-                        reinterpret_cast<std::byte *>(recv_buf.data())+size
-                        );
-                    while (stream_buffer.size() >=4) {
-                        uint32_t frameLength = 0;
-                        std::memcpy(&frameLength, stream_buffer.data(),4);
-
-                        if (stream_buffer.size() >= 4 + frameLength) {
-                            std::vector<std::byte> final_data(frameLength);
-                            std::memcpy(final_data.data(), stream_buffer.data()+ 4 ,frameLength);
-                            stream_buffer.erase(stream_buffer.begin(), stream_buffer.begin() + 4 + frameLength);
-                            if (on_received_) {
-                                on_received_(std::move(final_data));
-                            }
-                        }else {
-                            break;
-                        }
-                    }
-                }else {
-                    break;
+            for ( int i = 0; i< kNumStreams; ++i){
+                std::lock_guard<std::mutex> lock(kcpMutexes_[i]);
+                if (kcps_[i]) {
+                    ikcp_update(kcps_[i],now);
+                    pending_snd += ikcp_waitsnd(kcps_[i]);
                 }
             }
-            if (!active && pending_snd == 0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            } else if (!active) {
-                std::this_thread::yield();
-            }
+            //reassembled
+            for (int i = 0; i < kNumStreams; ++i) {
+                while (true) {
+                    kcpMutexes_[i].lock();
+                    int size = ikcp_recv(kcps_[i], recv_buf.data(), static_cast<int>(recv_buf.size()));
+                    kcpMutexes_[i].unlock();
+                    //std::lock_guard<std::mutex> lock(kcpMutex_);
+                    if (size>0) {
+                        active = true;
+                        byteReceived_.fetch_add(size,std::memory_order_relaxed);
+                        stream_buffer[i].insert(stream_buffer[i].end(),
+                            reinterpret_cast<std::byte*>(recv_buf.data()),
+                            reinterpret_cast<std::byte *>(recv_buf.data())+size
+                            );
+                        while (stream_buffer[i].size() >=4) {
+                            uint32_t frameLength = 0;
+                            std::memcpy(&frameLength, stream_buffer[i].data(),4);
 
-        }
+                            if (stream_buffer[i].size() >= 4 + frameLength) {
+                                std::vector<std::byte> final_data(frameLength);
+                                std::memcpy(final_data.data(), stream_buffer[i].data()+ 4 ,frameLength);
+                                stream_buffer[i].erase(stream_buffer[i].begin(), stream_buffer[i].begin() + 4 + frameLength);
+                                if (on_received_) {
+                                    on_received_(std::move(final_data));
+                                }
+                            }else {
+                                break;
+                            }
+                        }
+                    }else {
+                        break;
+                    }
+                }
+            }
+                if (!active && pending_snd == 0) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                } else if (!active) {
+                    std::this_thread::yield();
+                }
+
+            }
     }
     KCPTransport::Stats KCPTransport::get_stats() const {
         Stats s;

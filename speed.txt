@@ -1,0 +1,69 @@
+Test 1::
+\Users\xint2\CLionProjects\Sxaint\cmake-build-debug\Sxaint.exe send "C:\Users\xint2\Downloads\GAR 1.0.1\GAR.exe"
+[2026-07-09 08:56:44.154] [info] Scanning local network for recv
+[2026-07-09 08:56:44.489] [info] Discovery service. Broadcasting as 'Sxaint-Sender'
+[2026-07-09 08:56:47.544] [warning] No Wi-Fi peers found. Defaulting to local machine (127.0.0.1)
+[2026-07-09 08:56:47.547] [info] Starting sender session for GAR.exe
+[2026-07-09 08:56:47.548] [info] KCP Transport connected to 127.0.0.1:9000
+[2026-07-09 08:56:47.548] [info] handshake sent. Waiting for receiver to acknowledge resume state
+[2026-07-09 08:56:47.578] [info] ACK recv.Slicing file for transfer
+[2026-07-09 08:56:51.280] [info] Compression strategy selected: 0
+[2026-07-09 08:56:51.282] [info] Resuming Transfer: Skipped 50 chunks that already exist.
+GAR.exe [                                        ] 0% | 0.5 MB/s | ETA: 767s
+GAR.exe [=====                                   ] 13% | 72.6 MB/s | ETA: 4s
+GAR.exe [=======                                 ] 18% | 64.0 MB/s | ETA: 5s
+GAR.exe [==========                              ] 26% | 84.4 MB/s | ETA: 3s
+GAR.exe [============                            ] 31% | 73.4 MB/s | ETA: 3s
+GAR.exe [=============                           ] 34% | 73.4 MB/s | ETA: 3s
+GAR.exe [================                        ] 41% | 74.0 MB/s | ETA: 3s
+GAR.exe [==================                      ] 45% | 60.9 MB/s | ETA: 3s
+GAR.exe [====================                    ] 52% | 85.4 MB/s | ETA: 2s
+GAR.exe [=====================                   ] 53% | 85.4 MB/s | ETA: 2s
+GAR.exe [======================                  ] 55% | 85.4 MB/s | ETA: 2s
+GAR.exe [=======================                 ] 58% | 65.5 MB/s | ETA: 2s
+GAR.exe [=======================                 ] 59% | 65.5 MB/s | ETA: 2s
+GAR.exe [========================                ] 60% | 65.5 MB/s | ETA: 2s
+GAR.exe [=========================               ] 63% | 60.0 MB/s | ETA: 2s
+GAR.exe [=========================               ] 64% | 60.0 MB/s | ETA: 2s
+GAR.exe [===========================             ] 68% | 60.0 MB/s | ETA: 2s
+GAR.exe [===========================             ] 69% | 72.0 MB/s | ETA: 1s
+GAR.exe [=============================           ] 73% | 72.0 MB/s | ETA: 1s
+GAR.exe [==============================          ] 77% | 58.7 MB/s | ETA: 1s
+[2026-07-09 08:56:57.709] [info] Transfer complete. Closing buffers.
+
+
+C:\Users\xint2\CLionProjects\Sxaint\cmake-build-debug\Sxaint.exe send "C:\Users\xint2\Downloads\GAR 1.0.1\GAR.exe"
+[2026-07-09 11:01:56.522] [info] Scanning local network for recv
+[2026-07-09 11:01:56.558] [info] Discovery service. Broadcasting as 'Sxaint-Sender'
+[2026-07-09 11:01:59.593] [warning] No Wi-Fi peers found. Defaulting to local machine (127.0.0.1)
+[2026-07-09 11:01:59.601] [info] Starting sender session for GAR.exe
+[2026-07-09 11:01:59.605] [info] KCP Transport connected to 127.0.0.1:9000
+[2026-07-09 11:01:59.610] [info] handshake sent. Waiting for receiver to acknowledge resume state
+[2026-07-09 11:01:59.665] [info] ACK recv.Slicing file for transfer
+[2026-07-09 11:02:08.302] [info] Compression strategy selected: 0
+[2026-07-09 11:02:08.353] [info] Resuming Transfer: Skipped 50 chunks that already exist.
+GAR.exe [============                            ] 30% | 11.8 MB/s | ETA: 23s
+GAR.exe [=============                           ] 33% | 11.8 MB/s | ETA: 23s
+GAR.exe [=============                           ] 34% | 11.8 MB/s | ETA: 23s
+GAR.exe [===============                         ] 38% | 99.7 MB/s | ETA: 2ss
+GAR.exe [================                        ] 40% | 99.7 MB/s | ETA: 2ss
+GAR.exe [================                        ] 42% | 99.7 MB/s | ETA: 2ss
+GAR.exe [=================                       ] 44% | 72.1 MB/s | ETA: 3ss
+GAR.exe [==================                      ] 47% | 72.1 MB/s | ETA: 3ss
+GAR.exe [===================                     ] 49% | 72.1 MB/s | ETA: 3ss
+GAR.exe [====================                    ] 52% | 98.4 MB/s | ETA: 1ss
+GAR.exe [=====================                   ] 54% | 98.4 MB/s | ETA: 1ss
+GAR.exe [======================                  ] 56% | 98.4 MB/s | ETA: 1ss
+GAR.exe [=======================                 ] 58% | 70.4 MB/s | ETA: 2ss
+GAR.exe [========================                ] 62% | 70.4 MB/s | ETA: 2ss
+GAR.exe [=========================               ] 64% | 70.4 MB/s | ETA: 2ss
+GAR.exe [==========================              ] 67% | 99.5 MB/s | ETA: 1ss
+GAR.exe [============================            ] 70% | 99.5 MB/s | ETA: 1ss
+GAR.exe [=================================       ] 83% | 95.4 MB/s | ETA: 0ss
+[2026-07-09 11:02:12.813] [info] Transfer complete. Closing buffers.
+
+Process finished with exit code 0
+
+
+
+

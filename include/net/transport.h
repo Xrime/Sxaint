@@ -13,6 +13,7 @@
 #include <thread>
 #include <winsock2.h>
 #include  <ws2tcpip.h>
+#include "ikcp.h"
 
 struct IKCPCB;
 namespace sxaint::net {
@@ -37,13 +38,13 @@ namespace sxaint::net {
         };
         KCPTransport();
         ~KCPTransport();
-        int get_wait_snd();//uint32_t stream_id = 0mtu
+        int get_wait_snd(uint32_t stream_id = 0);
         KCPTransport(const KCPTransport&) = delete;
         KCPTransport& operator =(const KCPTransport&) = delete;
         void connect(const std::string& host, uint16_t port, const Config& config = Config{});
         void listen(uint16_t port, const Config& config = Config{});
         // void sendChunk(const core::Chunk& chunk);
-        void sendChunk(std::vector<std::byte>&& raw_payload);//, uint32_t stream_id =0
+        void sendChunk(std::vector<std::byte>&& raw_payload, uint32_t stream_id =0);
         using onChunkReceived = std::function<void(std::vector<std::byte>&&)>;
         void setRecvCallback(onChunkReceived cb);
         Stats get_stats() const;
@@ -56,17 +57,17 @@ namespace sxaint::net {
 
         SOCKET socket_{INVALID_SOCKET};
         sockaddr_in remote_addr_{};
-        IKCPCB* kcp_{nullptr};
+        // IKCPCB* kcp_{nullptr};
 
         std::jthread io_thread_;
         std::atomic<bool> running_{false};
-        std::mutex kcpMutex_;
+        // std::mutex kcpMutex_;
         onChunkReceived on_received_;
         std::atomic<uint64_t> byteSent_{0};
         std::atomic<uint64_t> byteReceived_{0};
-        // static const int kNumStreams = 4;
-        // ikcpcb* kcp_[kNumStreams]={nullptr};
-        // std::mutex kcpMutexes_[kNumStreams]
+        static const int kNumStreams = 4;
+        ikcpcb* kcps_[kNumStreams]={nullptr};
+        std::mutex kcpMutexes_[kNumStreams];
 
     };
 }

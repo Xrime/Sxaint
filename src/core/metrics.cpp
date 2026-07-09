@@ -51,7 +51,7 @@ namespace sxaint::core {
 
         int bars = (percent* 40) / 100;
         std::string bar = std::string(bars, '=') + std::string(40 - bars, ' ');
-        return fmt::format("[{}] {}% | {:.1f} MB/s | ETA: {}s",bar , percent,speed,eta);
+        return fmt::format("[{}] {}% | {:.1f} MB/s | ETA: {}",bar , percent,speed,eta);
 
     }
 
