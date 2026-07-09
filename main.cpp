@@ -77,8 +77,12 @@ int main(int argc, char* argv[]) {
             target_ip = "127.0.0.1";
         }
         discovery.stop();
+        uint32_t user_pin = 0;
+        std::cout<<"\n Enter the 6-digit PIN displayed on the Receiver: ";
+        std::cin>> user_pin;
+        std::cout << "\n";
         net::Session session;
-        session.sendFile(target_path, target_ip, DATA_PORT);
+        session.sendFile(target_path, target_ip, DATA_PORT, user_pin);
     }else {
         spdlog::error("unknown mode: {}. use 'send' or 'recv'", mode);
         return  1;

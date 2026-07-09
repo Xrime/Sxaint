@@ -11,12 +11,14 @@ namespace sxaint::net {
     enum class messageType: uint8_t {
         handshake = 0x01,
         handshakeAck  = 0x02,
+        handshakeReject = 0x03,
         chunkData = 0x03
 
     };
 #pragma pack(push, 1)
     struct handshake {
         uint8_t type = static_cast<uint8_t>(messageType::handshake);
+        uint32_t pin;
         uint64_t file_size;
         uint32_t chunk_size;
         uint32_t total_chunks;

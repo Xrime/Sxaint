@@ -24,7 +24,7 @@ namespace sxaint::net {
         ~Session() = default;
 
         // run as sender
-        void sendFile(const std::filesystem::path& file_path, const std::string& target_ip, uint16_t port);
+        void sendFile(const std::filesystem::path& file_path, const std::string& target_ip, uint16_t port, uint32_t pin);
         void recvFile(const std::filesystem::path& output_dir, uint16_t port);// run as receiver
 
     private:
@@ -33,13 +33,15 @@ namespace sxaint::net {
         void processHandshakeACk(const std::vector<std::byte>& data);
         void processChunk(const chunkWireHeader* header, std::span<const std::byte> payload);
 
+
         KCPTransport transport_;
         core::ThreadPool thread_pool_;
         core::FileMapper file_mapper_;
         std::filesystem::path output_dir_;
         std::string current_filename_;
         std::span<std::byte> write_view_;
-
+        std::atomic<bool> handshake_rejected_{false};
+        uint32_t expected_pin_{0};
         std::atomic<uint32_t> chunks_recv_{0};
         std::atomic<uint32_t> expectedChunks_{0};
         std::atomic<bool> trans_complete_{false};

@@ -8,6 +8,7 @@
 #include <spdlog/spdlog.h>
 #include <algorithm>
 #include <iostream>
+#include <random>
 
 namespace sxaint::net {
 
@@ -17,16 +18,19 @@ namespace sxaint::net {
         });
     }
 
-    void Session::sendFile(const std::filesystem::path &file_path, const std::string &target_ip, uint16_t port) {
+    void Session::sendFile(const std::filesystem::path &file_path, const std::string &target_ip, uint16_t port, uint32_t pin) {
         spdlog::info("Starting sender session for {}", file_path.filename().string());
 
         uint64_t file_size = std::filesystem::file_size(file_path);
         metrics_ = std::make_unique<core::transferMetrics>(file_size);
         auto file_view = file_mapper_.map_read(file_path, 0, file_size);
 
+
         transport_.connect(target_ip, port);
 
         handshake hs{};
+        hs.type = static_cast<uint8_t>(messageType::handshake);
+        hs.pin = pin;
         hs.file_size = file_size;
         hs.chunk_size = core::Chunker::kDefaultChunkSize;
 
@@ -48,6 +52,11 @@ namespace sxaint::net {
         while (!handshake_acked_) {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
+        if (handshake_rejected_) {
+            spdlog::error("Transfer aborted. The PIN you entered was incorrect. ");
+            return;
+        }
+        
 
         spdlog::info("ACK recv.Slicing file for transfer");
         auto chunks = core::Chunker::slice(file_view, hs.chunk_size);
@@ -154,6 +163,13 @@ namespace sxaint::net {
     void Session::recvFile(const std::filesystem::path &output_dir, uint16_t port) {
         output_dir_ = output_dir;
         std::filesystem::create_directories(output_dir_);
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<uint32_t> distrib(100000,999999);
+        expected_pin_ = distrib(gen);
+
+        spdlog::info("Receiver Ready. Your secure PIN is: {}", expected_pin_);
+
 
         spdlog::info("starting receiver session. Listening on port {} ...", port);
         transport_.listen(port);
@@ -185,6 +201,10 @@ namespace sxaint::net {
             }
         }else if (type == messageType::handshakeAck){
             processHandshakeACk(data);
+        }else if (type ==messageType::handshakeReject) {
+            spdlog::error("handshake REJECTED by Receiver! Incorrect PIN.");
+            handshake_rejected_ = true;
+            handshake_acked_ =true;
         }
         else if (type == messageType::chunkData) {
             if (data.size() >= sizeof(chunkWireHeader)) {
@@ -209,6 +229,14 @@ namespace sxaint::net {
     }
 
     void Session::processHandshake(const handshake *hs) {
+
+        if (hs->pin != expected_pin_) {
+            spdlog::error("Unauthorized transfer attempt! Invalid PiN: {}", hs->pin);
+            std::vector<std::byte> reject_buffer(1);
+            reject_buffer[0] = static_cast<std::byte>(messageType::handshakeReject);
+            transport_.sendChunk(std::move(reject_buffer), 0);
+            return;
+        }
         current_filename_ = hs->file_name;
         expectedChunks_ = hs->total_chunks;
         metrics_ = std::make_unique<core::transferMetrics>(hs->file_size);
