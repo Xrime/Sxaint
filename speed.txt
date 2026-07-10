@@ -82,4 +82,73 @@ Process finished with exit code 0
 
 
 
+test 4
+C:\Users\xint2\CLionProjects\Sxaint\cmake-build-debug\Sxaint.exe send "C:\Users\xint2\Downloads\GAR 1.0.1\GAR.exe"
+[2026-07-09 17:57:57.733] [info] Scanning local network for recv
+[2026-07-09 17:57:57.744] [info] Discovery service. Broadcasting as 'Sxaint-Sender'
+[2026-07-09 17:58:00.785] [warning] No Wi-Fi peers found. Defaulting to local machine (127.0.0.1)
 
+ Enter the 6-digit PIN displayed on the Receiver:193279
+
+[2026-07-09 17:58:16.643] [info] Starting sender session for GAR.exe
+[2026-07-09 17:58:16.644] [info] KCP Transport connected to 127.0.0.1:9000
+[2026-07-09 17:58:16.719] [info] handshake sent. Waiting for receiver to acknowledge resume state
+[2026-07-09 17:58:16.800] [info] ACK recv.Slicing file for transfer
+[2026-07-09 17:58:24.997] [info] Compression strategy selected: 0
+[2026-07-09 17:58:25.010] [info] Resuming Transfer: Skipped 50 chunks that already exist.
+GAR.exe [                                        ] 0% | 0.0 MB/s | ETA: 999
+GAR.exe [======                                  ] 16% | 0.0 MB/s | ETA: 999
+GAR.exe [================                        ] 41% | 150.3 MB/s | ETA: 1
+GAR.exe [==============================          ] 75% | 111.2 MB/s | ETA: 0
+
+Process finished with exit code -1073740940 (0xC0000374)
+
+
+
+
+
+test
+C:\Users\xint2\CLionProjects\Sxaint\cmake-build-debug\Sxaint.exe send "C:\Users\xint2\Videos\Captures\Edit release · Xrime_GAR - Google Chrome 2026-06-13 16-01-13.mp4"
+[2026-07-09 19:09:00.560] [info] Scanning local network for recv
+[2026-07-09 19:09:00.583] [info] Discovery service. Broadcasting as 'Sxaint-Sender'
+[2026-07-09 19:09:03.606] [warning] No Wi-Fi peers found. Defaulting to local machine (127.0.0.1)
+
+ Enter the 6-digit PIN displayed on the Receiver:216565
+
+[2026-07-09 19:09:14.123] [info] Starting sender session for Edit release ┬╖ Xrime_GAR - Google Chrome 2026-06-13 16-01-
+13.mp4
+[2026-07-09 19:09:14.143] [info] KCP Transport connected to 127.0.0.1:9000
+[2026-07-09 19:09:14.212] [info] handshake sent. Waiting for receiver to acknowledge resume state
+[2026-07-09 19:09:14.288] [info] ACK recv.Slicing file for transfer
+[2026-07-09 19:09:15.669] [info] Compression strategy selected: 0
+[2026-07-09 19:09:15.670] [info] Resuming Transfer: Skipped 8 chunks that already exist.
+Edit release ┬╖ Xrime_GAR - Google Chrome 2026-06-13 16-01-13.mp4 [                                        ] 0% | 0.0 MB
+/s | ETA: 999
+Edit release ┬╖ Xrime_GAR - Google Chrome 2026-06-13 16-01-13.mp4
+Process finished with exit code -1073740940 (0xC0000374)
+
+
+test 6
+C:\Users\xint2\CLionProjects\Sxaint\cmake-build-debug\Sxaint.exe send "C:\Users\xint2\Downloads\GAR 1.0.1\GAR.exe"
+[2026-07-09 21:46:26.590] [info] Scanning local network for recv
+[2026-07-09 21:46:26.603] [info] Discovery service. Broadcasting as 'Sxaint-Sender'
+[2026-07-09 21:46:29.642] [warning] No Wi-Fi peers found. Defaulting to local machine (127.0.0.1)
+
+ Enter the 6-digit PIN displayed on the Receiver:109760
+
+[2026-07-09 21:46:45.661] [info] Starting sender session for GAR.exe
+[2026-07-09 21:46:45.663] [info] KCP Transport connected to 127.0.0.1:9000
+[2026-07-09 21:46:45.723] [info] handshake sent. Waiting for receiver to acknowledge resume state
+[2026-07-09 21:46:45.809] [info] ACK recv.Slicing file for transfer
+[2026-07-09 21:46:53.520] [info] Compression strategy selected: 0
+GAR.exe [                                        ] 0% | 0.0 MB/s | ETA: 999
+GAR.exe [===                                     ] 9% | 0.0 MB/s | ETA: 999
+GAR.exe [===================                     ] 49% | 393.8 MB/s | ETA: 0
+GAR.exe [===========================             ] 69% | 393.8 MB/s | ETA: 0
+GAR.exe [================================        ] 80% | 395.1 MB/s | ETA: 0
+GAR.exe [======================================= ] 98% | 395.1 MB/s | ETA: 0
+GAR.exe [======================================= ] 98% | 252.5 MB/s | ETA: 0
+GAR.exe [========================================] 100% | 9.2 MB/s | ETA: 00
+[2026-07-09 21:46:55.082] [info] Transfer complete. Closing buffers.
+
+Process finished with exit code 0

@@ -31,6 +31,7 @@ namespace sxaint::core {
 
     void FileMapper::cleanup() {
         if (mappedView_) {
+            FlushViewOfFile(mappedView_, mappedLength_);
             UnmapViewOfFile(mappedView_);
             mappedView_ = nullptr;
         }
@@ -49,7 +50,7 @@ namespace sxaint::core {
         HANDLE hFile = CreateFileW(
             path.c_str(),
             GENERIC_WRITE,
-            0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
             nullptr,
             CREATE_ALWAYS,
             FILE_ATTRIBUTE_NORMAL,
@@ -57,7 +58,7 @@ namespace sxaint::core {
         );
 
         if (hFile == INVALID_HANDLE_VALUE) {
-            throw std::runtime_error("Failed to create file for preallocation");
+            throw std::runtime_error("Failed to create file for preallocation, Windows Error: " + std::to_string(GetLastError()));
         }
 
         // --- ENTERPRISE FIX: SET SPARSE FLAG ---
@@ -95,7 +96,7 @@ namespace sxaint::core {
     }
     std::span<std::byte> FileMapper::map_write(const std::filesystem::path &path, uint64_t offset, size_t length) {
         cleanup();
-        fileHandle_ = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE,FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        fileHandle_ = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (fileHandle_ == INVALID_HANDLE_VALUE) {
             throw std::runtime_error("failed to create file mapping");
         }

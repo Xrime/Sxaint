@@ -16,6 +16,9 @@
 #include <future>
 #include "../core/metrics.h"
 #include "../core/crypto.h"
+#include <functional>
+
+
 
 
 namespace sxaint::net {
@@ -25,8 +28,8 @@ namespace sxaint::net {
         ~Session() = default;
 
         // run as sender
-        void sendFile(const std::filesystem::path& file_path, const std::string& target_ip, uint16_t port, uint32_t pin);
-        void recvFile(const std::filesystem::path& output_dir, uint16_t port);// run as receiver
+        void sendFile(const std::filesystem::path& file_path, const std::string& target_ip, uint16_t port, uint32_t pin, std::function<void(int percent, double mbps, uint32_t eta)> on_progress=nullptr);
+        void recvFile(const std::filesystem::path& output_dir, uint16_t port, uint32_t expected_pin, std::function<void(int percent, double mbps, uint32_t eta)> on_progress = nullptr);// run as receiver
 
     private:
         std::vector<std::byte> aes_key_;
@@ -54,6 +57,7 @@ namespace sxaint::net {
         core::transferManifest current_manifest_;
         std::mutex manifest_mutex_;
         std::unique_ptr<core::transferMetrics> metrics_;
+        std::function<void(int percent, double mbps, uint32_t eta)> on_progress_;
 
     };
 }

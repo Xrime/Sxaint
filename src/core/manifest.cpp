@@ -7,7 +7,7 @@
 
 namespace sxaint::core {
     std::vector<uint8_t> transferManifest::pack_bitfield() const {
-        std::vector<uint8_t> packed((total_chunks + 7)/ 8,9);
+        std::vector<uint8_t> packed((total_chunks + 7)/ 8, 0);
         for (uint32_t i =0 ; i<total_chunks; ++i) {
             if (completedChunks[i]) {
                 packed[i/8] |=(1<<(i% 8));

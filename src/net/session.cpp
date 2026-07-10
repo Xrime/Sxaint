@@ -18,7 +18,8 @@ namespace sxaint::net {
         });
     }
 
-    void Session::sendFile(const std::filesystem::path &file_path, const std::string &target_ip, uint16_t port, uint32_t pin) {
+    void Session::sendFile(const std::filesystem::path &file_path, const std::string &target_ip, uint16_t port, uint32_t pin, std::function<void(int, double, uint32_t)> on_progress) {
+        on_progress_ = std::move(on_progress);
         spdlog::info("Starting sender session for {}", file_path.filename().string());
 
         uint64_t file_size = std::filesystem::file_size(file_path);
@@ -71,7 +72,8 @@ namespace sxaint::net {
 
             if (chunk.id < resume_bitfield_.size() && resume_bitfield_[chunk.id]) {
                 skipped_chunks++;
-                chunks_sent_++;
+                chunks_sent_.fetch_add(1, std::memory_order_relaxed);
+                continue;
             }
             uint32_t stream_id = chunk.id % 4;
             while (transport_.get_wait_snd() > 32000) {
@@ -131,14 +133,15 @@ namespace sxaint::net {
             // std::cout << "\r[SENDER]   [" << std::string(percent / 2, '#') << std::string(50 - percent / 2, ' ') << "] " << percent << "% " << std::flush;
             // std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
-            if (metrics_) {
-                std::cout << "\r"<<filename << " "<< metrics_->get_ui_string()<< std::flush;
+            if (metrics_ && on_progress_) {
+                on_progress_(metrics_->get_progress_per(), metrics_->get_speed_mbps(), metrics_->get_ets_secs());
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         }
-        if (metrics_) {
-            std::cout<<"\r"<< filename<<" "<<metrics_->get_ui_string()<<"\n"<< std::flush;
+        if (metrics_ && on_progress_) {
+            on_progress_(100,0.0,0);
+            // std::cout<<"\r"<< filename<<" "<<metrics_->get_ui_string()<<"\n"<< std::flush;
         }
         for (auto& f : futures) {
             if (f.valid()) {
@@ -152,15 +155,17 @@ namespace sxaint::net {
         spdlog::info("Transfer complete. Closing buffers.");
     }
 
-    void Session::recvFile(const std::filesystem::path &output_dir, uint16_t port) {
+    void Session::recvFile(const std::filesystem::path &output_dir, uint16_t port, uint32_t expected_pin, std::function<void(int percent, double mbps, uint32_t eta)> on_progress) {
+
         output_dir_ = output_dir;
         std::filesystem::create_directories(output_dir_);
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_int_distribution<uint32_t> distrib(100000,999999);
-        expected_pin_ = distrib(gen);
+        expected_pin_= expected_pin;
+        // std::random_device rd;
+        // std::mt19937 gen(rd());
+        // std::uniform_int_distribution<uint32_t> distrib(100000,999999);
+        // expected_pin_ = distrib(gen);
 
-        spdlog::info("Receiver Ready. Your secure PIN is: {}", expected_pin_);
+        // spdlog::info("Receiver Ready. Your secure PIN is: {}", expected_pin_);
 
 
         spdlog::info("starting receiver session. Listening on port {} ...", port);
@@ -222,6 +227,19 @@ namespace sxaint::net {
 
     void Session::processHandshake(const handshake *hs) {
 
+        if (expectedChunks_ > 0) {
+            // Handshake already processed. Resend ACK in case it was lost.
+            auto packed_bits = current_manifest_.pack_bitfield();
+            std::vector<std::byte> ack_buffer(sizeof(handshakeAck) + packed_bits.size());
+            handshakeAck ack{};
+            ack.type = static_cast<uint8_t>(messageType::handshakeAck);
+            ack.total_chunks = hs->total_chunks;
+            std::memcpy(ack_buffer.data(), &ack, sizeof(handshakeAck));
+            std::memcpy(ack_buffer.data() + sizeof(handshakeAck), packed_bits.data(), packed_bits.size());
+            transport_.sendChunk(std::move(ack_buffer));
+            return;
+        }
+
         if (hs->pin != expected_pin_) {
             spdlog::error("Unauthorized transfer attempt! Invalid PiN: {}", hs->pin);
             std::vector<std::byte> reject_buffer(1);
@@ -263,6 +281,7 @@ namespace sxaint::net {
         transport_.sendChunk(std::move(ack_buffer));
     }
     void Session::processHandshakeACk(const std::vector<std::byte> &data) {
+        if (handshake_acked_.load(std::memory_order_relaxed)) return;
         if (data.size()< sizeof(handshakeAck)) return;
         handshakeAck ack{};
         std::memcpy(&ack, data.data(), sizeof(handshakeAck));
@@ -318,9 +337,9 @@ namespace sxaint::net {
 
         }
         uint32_t received =chunks_recv_.fetch_add(1,std::memory_order_relaxed)+1;
-        if (metrics_) {
-            std::cout << "\r" << current_filename_<< " " <<metrics_->get_ui_string() <<std::flush;
-
+        if (metrics_ && on_progress_ ) {
+            // std::cout << "\r" << current_filename_<< " " <<metrics_->get_ui_string() <<std::flush;
+            on_progress_(metrics_->get_progress_per(), metrics_->get_speed_mbps(), metrics_->get_ets_secs());
         }
         if (received == expectedChunks_) {
             std::cout<< "\n";

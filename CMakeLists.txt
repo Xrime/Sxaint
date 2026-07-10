@@ -3,6 +3,15 @@ project(Sxaint)
 
 set(CMAKE_CXX_STANDARD 20)
 
+include(FetchContent)
+FetchContent_Declare(
+        Slint
+        GIT_REPOSITORY https://github.com/slint-ui/slint.git
+        GIT_TAG v1.17.0
+        SOURCE_SUBDIR api/cpp
+)
+FetchContent_MakeAvailable(Slint)
+
 find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(fmt CONFIG REQUIRED)
@@ -10,24 +19,29 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(zstd CONFIG REQUIRED)
 find_package(mbedtls CONFIG REQUIRED)
 
-
 pkg_check_modules(lz4 REQUIRED IMPORTED_TARGET liblz4)
-add_library(sxaint_core STATIC main.cpp
+
+
+add_library(sxaint_core STATIC
         src/core/file_mapper.cpp
         src/core/thread_pool.cpp
 )
 
 target_include_directories(sxaint_core PUBLIC src)
 target_compile_definitions(sxaint_core PUBLIC _WIN32_WINNT=0x0A00)
+
 target_link_libraries(
         sxaint_core PUBLIC
+        Slint::Slint
         fmt::fmt
         spdlog::spdlog
         PkgConfig::lz4
         zstd::libzstd_shared
         mbedtls
 )
+
 include_directories(kcp-2.1.1)
+
 add_executable(Sxaint main.cpp
         include/core/file_mapper.h
         src/core/file_mapper.cpp
@@ -54,9 +68,19 @@ add_executable(Sxaint main.cpp
         include/core/crypto.h
         src/core/crypto.cpp
 )
+
 target_link_libraries(Sxaint PRIVATE sxaint_core)
+
 if(WIN32)
     target_link_libraries(Sxaint PRIVATE ws2_32)
 endif()
-target_link_libraries(Sxaint PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 
+target_link_libraries(Sxaint PRIVATE OpenSSL::SSL OpenSSL::Crypto  Slint::Slint)
+
+slint_target_sources(Sxaint ui/appwindow.slint)
+add_custom_command(TARGET Sxaint POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    $<TARGET_RUNTIME_DLLS:Sxaint>
+    $<TARGET_FILE_DIR:Sxaint>
+    COMMAND_EXPAND_LISTS
+)

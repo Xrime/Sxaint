@@ -1,0 +1,102 @@
+import { Button, VerticalBox, HorizontalBox, LineEdit, ProgressIndicator,  } from "std-widgets.slint";
+export component AppWindow inherits Window {
+    title: "Sxaint";
+    width: 650px;
+    height: 480px;
+    background: #2e3440;
+
+    in-out property <string> mode: "Send";
+    in-out property <string> filepath: "";
+    in-out property <string> pin-code: "";
+    in-out property <string> status_text: "Ready to transfer.";
+    in-out property <float> progress_value: 0.0;
+    in-out property <string> speed_text: "0.0 MB/s";
+    in-out property <string> eta_text: "ETA: --";
+    callback start_trans();
+    callback browse_file();
+
+    VerticalBox {
+        padding: 30px;
+        spacing: 18px;
+        
+        Text {
+            text: "Sxaint";
+            font-size: 32px;
+            font-weight: 800;
+            color: #0077be;
+            horizontal-alignment: center;
+        }
+        HorizontalBox {
+            spacing: 10px;
+            Button {
+                text: "Sender Mode";
+                clicked => {root.mode = "Send"}
+            }
+            Button {
+                text: "Receiver Mode";
+                clicked => {root.mode = "Receive"}
+                
+            }
+        }
+        Text {text: "Current Mode: "+ root.mode; color: #5c6bc0;font-size: 14px;}
+        HorizontalBox {
+            spacing: 10px;
+            LineEdit {
+                placeholder-text: root.mode =="Send" ? "Select File to Send..": "Select Save Directory...";
+                text: root.filepath;
+                edited(text) => {root.filepath = text; }
+                horizontal-stretch: 1 ;
+            }
+            Button {
+                text: "Browse..";
+                clicked => {root.browse_file();}
+            }
+        }
+//        if root.mode=="Send": LineEdit {
+//            placeholder-text: "Enter file path to send"; text: root.filepath; edited(text) => {root.filepath = text ;}
+//        }
+//        if root.mode == "Receive": LineEdit{
+//            placeholder-text: "Enter Save Directory (e.g ./download)"; text: root.filepath; edited(text) => {root.filepath =text;}
+//
+//        }
+        if root.mode == "Send" : LineEdit{
+            placeholder-text: "Enter 6-Digit PIN";
+            text: root.pin-code;
+            edited(text) => {root.pin-code = text;}
+        }
+        if root.mode == "Receive": Text {
+            text: "PIN :"+ root.pin-code;
+            color: #00ffff;
+            font-size: 26px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+        Button {
+            text: root.mode == "Send" ? "Initiate Transfer" : "Start Listening";
+            primary: true;
+            clicked => { root.start_trans(); }
+        }
+        Text {text: root.status_text;
+            color: #4db6ac;
+            horizontal-alignment: center;
+            }
+            ProgressIndicator {
+                progress: root.progress_value;
+            }
+            HorizontalBox {Text{
+                text: root.speed_text;
+                color: #00ffff;
+                horizontal-alignment: left;
+                font-weight: 600;
+            }
+            Text {
+                text: root.eta_text;
+                color: #00ffff;
+                horizontal-alignment: right;
+                font-weight: 600;
+            }
+            }
+
+    }
+
+  }

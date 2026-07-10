@@ -129,6 +129,8 @@ namespace sxaint::net {
         int sent = 0;
         int max_send_size = 128 * 1024; // 128 KB max per ikcp_send to respect IKCP_WND_RCV limit
 
+        std::lock_guard<std::mutex> lock(kcpMutexes_[s_id]);
+
         while (sent < total_size) {
             int to_send = std::min(max_send_size, total_size - sent);
             int ret = ikcp_send(kcps_[s_id], ptr + sent, to_send);
@@ -150,7 +152,7 @@ namespace sxaint::net {
         on_received_ = std::move(cb);
     }
     void KCPTransport::net_loop() {
-        std::vector<char> recv_buf(65536);
+        std::vector<char> recv_buf(4 * 1024 * 1024);
         std::vector<std::byte> stream_buffer[kNumStreams];
         u_long mode =1;
         ioctlsocket(socket_, FIONBIO, &mode);

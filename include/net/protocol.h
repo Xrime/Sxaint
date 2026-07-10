@@ -12,7 +12,7 @@ namespace sxaint::net {
         handshake = 0x01,
         handshakeAck  = 0x02,
         handshakeReject = 0x03,
-        chunkData = 0x03
+        chunkData = 0x04
 
     };
 #pragma pack(push, 1)
