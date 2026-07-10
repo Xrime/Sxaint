@@ -6,6 +6,8 @@
 #include "include/net/discovery.h"
 #include <future>
 #include <atomic>
+#include <random>
+
 #include "include/net/session.h"
 #include <windows.h>
 #include <shobjidl.h>
@@ -145,8 +147,14 @@ std::string OpenWindowsFileDialog(bool selectFolder) {
 }
 int main(){
         auto ui = AppWindow::create();
+        ui->on_browse_file([&ui] {
+            std::string mode = ui->get_mode().data();
+            bool isReceiver =(mode == "Receive");
+            std::string selected_path= OpenWindowsFileDialog(isReceiver);
+            if (!selected_path.empty()) {
+                ui->set_filepath(slint::SharedString(selected_path));
+            }});
         ui->on_start_trans([&ui] {
-            bool isReceiver
             std::string mode = ui->get_mode().data();
             std::string filepath = ui->get_filepath().data();
             if (filepath.empty()) {
@@ -162,7 +170,7 @@ int main(){
                 uint32_t pin =std::stoul(pin_str);
                 ui->set_status_text("Searching for Receiver...");
 
-                std::thread([&ui, filepath, pin]() {
+                std::thread([ui_handle = ui, filepath, pin]() {
                     net::Discovery discovery;
                     std::promise<std::string>peer_promise;
                     std::atomic<bool> found = false;
@@ -183,22 +191,46 @@ int main(){
                     }
                     discovery.stop();
 
-                    slint::invoke_from_event_loop([&ui, target_ip]() {
-                        ui->set_status_text("Connecting to " + slint::SharedString(target_ip) + "...");
+                    slint::invoke_from_event_loop([=]() {
+                        ui_handle->set_status_text("Connecting to " + slint::SharedString(target_ip) + "...");
+                    });
+
+                    net::Session session;
+                    session.sendFile(std::filesystem::path(reinterpret_cast<const char8_t*>(filepath.c_str())), target_ip,9000, pin,
+                        [ui_handle](int percent, double mbps,uint32_t eta) {
+                        slint::invoke_from_event_loop([=]() {
+                            ui_handle->set_progress_value(percent / 100.0f);
+                            ui_handle->set_speed_text(slint::SharedString(fmt::format("{:.1f} MB/s", mbps)));
+                            ui_handle->set_eta_text(slint::SharedString(fmt::format("ETA: {}s",eta)));
+                        });
+                    });
+                    slint::invoke_from_event_loop([=]() {
+                       ui_handle->set_status_text("Transfer Complete");
                     });
                 }).detach();
             }
             else if (mode== "Receive") {
+                std::random_device rd;
+                std::mt19937 gen(rd());
+                std::uniform_int_distribution<uint32_t> distrib(100000,999999);
+                uint32_t secure_pin = distrib(gen);
+                ui->set_pin_code(slint::SharedString(std::to_string(secure_pin)));
                 ui->set_status_text("Waiting for connections...");
-                ui->set_pin_code("123456");
-                std::thread([&ui, filepath]() {
+
+                std::thread([ui_handle =ui, filepath, secure_pin]() {
                    net::Discovery discovery;
-                    discovery.start(9001, "Sxaint- Receiver");
+                    discovery.start(9001, "Sxaint-Receiver");
                     net::Session session;
-                    session.recvFile(std::filesystem::path(filepath), 9000);
-                    slint::invoke_from_event_loop([&ui]() {
-                       ui->set_status_text("File received successfully");
-                        ui->set_progress_value(1.0);
+                    session.recvFile(std::filesystem::path(reinterpret_cast<const char8_t*>(filepath.c_str())), 9000, secure_pin,[ui_handle](int percent, double mbps, uint32_t eta) {
+                        slint::invoke_from_event_loop([=]() {
+                            ui_handle->set_progress_value(percent / 100.0f);
+                            ui_handle->set_speed_text(slint::SharedString(fmt::format("{:.1f} MB/s", mbps)));
+                            ui_handle->set_eta_text(slint::SharedString(fmt::format("ETA: {}s", eta)));
+                        });
+                    });
+                    slint::invoke_from_event_loop([=]() {
+                        ui_handle->set_status_text("File received successfully");
+                        ui_handle->set_progress_value(1.0);
                     });
 
                 }).detach();
