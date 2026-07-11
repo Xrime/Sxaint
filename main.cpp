@@ -163,60 +163,75 @@ int main(){
                 return;
             }
             ui->set_is_active(true);
-            ui->set_tranfer_log("");
             auto log_to_ui = [ui_handle = ui](const std::string& msg) {
                 spdlog::info(msg);
                 slint::invoke_from_event_loop([=]() {
                    auto current = ui_handle->get_transfer_log().data();
                     std::string new_log = std::string(current) + msg+"\n";
+                    ui_handle->set_transfer_log(slint::SharedString(new_log));
                 });
             };
+            char username[UNLEN + 1];
+            DWORD usernameLen = UNLEN +1;
+            GetUserNameA(username, &usernameLen);
+            std::string broadcastName = std::string(username) + "'s PC";
+
             if (mode == "Send") {
                 std::string pin_str = ui->get_pin_code().data();
                 if (pin_str.length() != 6) {
                     ui->set_status_text("Error: PIN must be 6 digits");
+                    ui->set_is_active(false);
                     return;
                 }
                 uint32_t pin =std::stoul(pin_str);
                 ui->set_status_text("Searching for Receiver...");
 
-                std::thread([ui_handle = ui, filepath, pin]() {
-                    net::Discovery discovery;
-                    std::promise<std::string>peer_promise;
-                    std::atomic<bool> found = false;
-                    discovery.set_callback([&](const net::Peer& peer) {
-                        if (peer.hostname == "Sxaint- Sender") return;
-                        if (!found.exchange(true)) {
-                            peer_promise.set_value(peer.ip_address);
-                        }
-                    });
-                    discovery.start(9001,"Sxaint-Sender");
-                    std::string target_ip;
-                    auto future = peer_promise.get_future();
-
-                    if (future.wait_for(std::chrono::seconds(3)) == std::future_status::ready) {
-                        target_ip = future.get();
-                    }else {
-                        target_ip = "127.0.0.1";
-                    }
-                    discovery.stop();
-
-                    slint::invoke_from_event_loop([=]() {
-                        ui_handle->set_status_text("Connecting to " + slint::SharedString(target_ip) + "...");
-                    });
-
-                    net::Session session;
-                    session.sendFile(std::filesystem::path(reinterpret_cast<const char8_t*>(filepath.c_str())), target_ip,9000, pin,
-                        [ui_handle](int percent, double mbps,uint32_t eta) {
-                        slint::invoke_from_event_loop([=]() {
-                            ui_handle->set_progress_value(percent / 100.0f);
-                            ui_handle->set_speed_text(slint::SharedString(fmt::format("{:.1f} MB/s", mbps)));
-                            ui_handle->set_eta_text(slint::SharedString(fmt::format("ETA: {}s",eta)));
+                std::thread([ui_handle = ui, filepath, pin, broadcastName]() {
+                    try {
+                        net::Discovery discovery;
+                        std::promise<std::string>peer_promise;
+                        std::atomic<bool> found = false;
+                        discovery.set_callback([&](const net::Peer& peer) {
+                            if (peer.hostname == broadcastName) return;
+                            if (!found.exchange(true)) {
+                                peer_promise.set_value(peer.ip_address);
+                            }
                         });
-                    });
-                    slint::invoke_from_event_loop([=]() {
-                       ui_handle->set_status_text("Transfer Complete");
-                    });
+                        discovery.start(9001, broadcastName);
+                        std::string target_ip;
+                        auto future = peer_promise.get_future();
+
+                        if (future.wait_for(std::chrono::seconds(3)) == std::future_status::ready) {
+                            target_ip = future.get();
+                        }else {
+                            target_ip = "127.0.0.1";
+                        }
+                        discovery.stop();
+
+                        slint::invoke_from_event_loop([=]() {
+                            ui_handle->set_status_text("Connecting to " + slint::SharedString(target_ip) + "...");
+                        });
+
+                        net::Session session;
+                        session.sendFile(std::filesystem::path(reinterpret_cast<const char8_t*>(filepath.c_str())), target_ip,9000, pin,
+                            [ui_handle](int percent, double mbps,uint32_t eta) {
+                            slint::invoke_from_event_loop([=]() {
+                                ui_handle->set_progress_value(percent / 100.0f);
+                                ui_handle->set_speed_text(slint::SharedString(fmt::format("{:.1f} MB/s", mbps)));
+                                ui_handle->set_eta_text(slint::SharedString(fmt::format("ETA: {}s",eta)));
+                            });
+                        });
+                        slint::invoke_from_event_loop([=]() {
+                           ui_handle->set_status_text("Transfer Complete");
+                            ui_handle->set_is_active(false);
+                        });
+                    }catch (const std::exception& e) {
+                        spdlog::error("Fatal Error: {}", e.what());
+                        slint::invoke_from_event_loop([=]() {
+                            ui_handle->set_status_text("Error: Transfer failed.");
+                            ui_handle->set_is_active(false);
+                        });
+                    }
                 }).detach();
             }
             else if (mode== "Receive") {
@@ -227,7 +242,7 @@ int main(){
                 ui->set_pin_code(slint::SharedString(std::to_string(secure_pin)));
                 ui->set_status_text("Waiting for connections...");
 
-                std::thread([ui_handle =ui, filepath, secure_pin]() {
+                std::thread([ui_handle =ui, filepath, secure_pin, broadcastName]() {
                    net::Discovery discovery;
                     discovery.start(9001, "Sxaint-Receiver");
                     net::Session session;
@@ -240,7 +255,8 @@ int main(){
                     });
                     slint::invoke_from_event_loop([=]() {
                         ui_handle->set_status_text("File received successfully");
-                        ui_handle->set_progress_value(1.0);
+                        ui_handle->set_progress_value(1.0f);
+                        ui_handle->set_is_active(false);
                     });
 
                 }).detach();
