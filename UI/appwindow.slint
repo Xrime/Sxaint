@@ -1,9 +1,19 @@
-import { Button, VerticalBox, HorizontalBox, LineEdit, ProgressIndicator, TextEdit  } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, LineEdit, ProgressIndicator, ListView  } from "std-widgets.slint";
+
+export struct historyRecord {
+    filename: string,
+    direction: string,
+    status: string,
+    timestamp: string,
+}
+
 export component AppWindow inherits Window {
     title: "Sxaint";
     width: 720px;
     height: 540px;
     background: #2e3440;//black
+
+    in-out property <string> currentTab: "Transfer";
 
     in-out property <string> mode: "Send";
     in-out property <string> filepath: "";
@@ -14,6 +24,7 @@ export component AppWindow inherits Window {
     in-out property <string> eta_text: "ETA: --";
     in-out property <string> transfer_log: "";
     in-out property <bool> is_active : false;
+    in property <[historyRecord]> history_model;
 
     callback start_trans();
     callback browse_file();
@@ -21,88 +32,135 @@ export component AppWindow inherits Window {
     VerticalBox {
         padding: 30px;
         spacing: 18px;
-        Text {
-            text: "Sxaint";
-            font-size: 32px;
-            font-weight: 800;
-            color: #0077be;//whi
-            horizontal-alignment: center;
-        }
+
         HorizontalBox {
-            spacing: 10px;
-            Button {
-                text: "Sender Mode";
-                clicked => {root.mode = "Send"}
-            }
-            Button {
-                text: "Receiver Mode";
-                clicked => {root.mode = "Receive"}
-                
-            }
+            alignment: center;
+            spacing: 20px;
+            Button {text: "Transfer"; primary: root.currentTab=="Transfer"; clicked => {root.currentTab= "Transfer";}}
+            Button {text:"Histroy"; primary: root.currentTab =="History"; clicked => {root.currentTab = "Histroy";}}
+
         }
-        Text {text: "Current Mode: "+ root.mode; color: #5c6bc0;font-size: 14px;}
-        HorizontalBox {
-            spacing: 10px;
-            LineEdit {
-                placeholder-text: root.mode =="Send" ? "Select File to Send..": "Select Save Directory...";
-                text: root.filepath;
-                edited(text) => {root.filepath = text; }
-                horizontal-stretch: 1 ;
-            }
-            Button {
-                text: "Browse..";
-                clicked => {root.browse_file();}
-            }
-        }
-//        if root.mode=="Send": LineEdit {
-//            placeholder-text: "Enter file path to send"; text: root.filepath; edited(text) => {root.filepath = text ;}
-//        }
-//        if root.mode == "Receive": LineEdit{
-//            placeholder-text: "Enter Save Directory (e.g ./download)"; text: root.filepath; edited(text) => {root.filepath =text;}
-//
-//        }
-        if root.mode == "Send" : LineEdit{
-            placeholder-text: "Enter 6-Digit PIN";
-            text: root.pin-code;
-            edited(text) => {root.pin-code = text;}
-        }
-        if root.mode == "Receive": Text {
-            text: "PIN :"+ root.pin-code;
-            color: #00ffff;
-            font-size: 26px;
-            font-weight: 700;
-            horizontal-alignment: center;
-        }
-        Button {
-            text: root.mode == "Send" ? "Initiate Transfer" : "Start Listening";
-            primary: true;
-            clicked => { root.start_trans(); }
-        }
-        Text {text: root.status_text;
-            color: #4db6ac;
-            horizontal-alignment: center;
-            }
-            ProgressIndicator {
-                progress: root.progress_value;
-            }
-            HorizontalBox {Text{
-                text: root.speed_text;
-                color: #00ffff;
-                horizontal-alignment: left;
-                font-weight: 600;
-            }
+        Rectangle {height: 1px; background: #2e3440;}
+        if root.currentTab =="Transfer": VerticalBox {
+            spacing: 22px;
             Text {
-                text: root.eta_text;
-                color: #00ffff;
-                horizontal-alignment: right;
-                font-weight: 600;
+                text: "Sxaint";
+                font-size: 32px;
+                font-weight: 800;
+                color: #0077be;//whi
+                horizontal-alignment: center;
             }
-            TextEdit {text: root.transfer_log;
-                      read-only: true;
-                      font-size: 12px;
-                      horizontal-stretch: 1;
-                      vertical-stretch: 1;
+             HorizontalBox {
+                    spacing: 20px;
+                    Button {
+                        text: "Sender Mode";
+                        enabled: !root.is_active;
+                        clicked => {root.mode = "Send"}
+                    }
+                    Button {
+                        text: "Receiver Mode";
+                        enabled: !root.is_active;
+                        clicked => {root.mode = "Receive"}
+
+                    }
+             }
+             HorizontalBox {
+                 spacing: 10px;
+                 LineEdit {
+                     placeholder-text: root.mode =="Send" ? "Select File to Send..": "Select Save Directory...";
+                     text: root.filepath;
+                     enabled: !root.is_active;
+                     edited(text) => {root.filepath = text; }
+                     horizontal-stretch: 1 ;
+                 }
+                 Button {
+                     text: "Browse..";
+                     enabled: !root.is_active;
+                     clicked => {root.browse_file();}
+                 }
+             }
+              if root.mode == "Send" : LineEdit{
+                 placeholder-text: "Enter 6-Digit PIN";
+                 text: root.pin-code;
+                 enabled: !root.is_active;
+                 edited(text) => {root.pin-code = text;}
+             }
+             if root.mode == "Receive": Text {
+                 text: "PIN :"+ root.pin-code;
+                 color: #00ffff;
+                 font-size: 26px;
+                 font-weight: 700;
+                 horizontal-alignment: center;
+             }
+             Button {
+                 text: root.mode == "Send" ? "Initiate Transfer" : "Start Listening";
+                 primary: true;
+                 enabled: !root.is_active;
+                 clicked => { root.start_trans(); }
+             }
+             Text {text: root.status_text;
+                 color: #4db6ac;
+                 horizontal-alignment: center;
+                 }
+             ProgressIndicator {
+                 progress: root.progress_value;
+             }
+             HorizontalBox {Text{
+                 text: root.speed_text;
+                 color: #00ffff;
+                 horizontal-alignment: left;
+                 font-weight: 600;
+             }
+             Text {
+                 text: root.eta_text;
+                 color: #00ffff;
+                 horizontal-alignment: right;
+                 font-weight: 600;
+             }
+
+        }
+        if root.currentTab =="Histroy": VerticalBox{
+            spacing: 10px;
+
+            HorizontalBox {
+                padding-bottom: 5px;
+                Text {text: "Filename"; color: #00ffff;horizontal-stretch: 3; font-weight: 700;}
+                Text {text: "Type"; color: #00ffff; horizontal-stretch: 1; font-weight: 700;}
+                Text {text: "Status"; color: #00ffff; horizontal-stretch: 1;font-weight: 700;}
+                Text {text: "Time"; color: #00ffff; horizontal-stretch: 1; font-weight: 700;}
+
             }
+            Rectangle {height: 1px; background: #2e3440;}
+            Rectangle {height: 5px;}
+            ListView {
+                for record in root.history_model : HorizontalBox {
+                    padding-top: 8px;
+                    padding-bottom:8px;
+                    Text{text: record.filename;
+                         color: #5c6bc0;
+                         horizontal-stretch: 3;
+                         overflow: elide;
+                    }
+                    Text{
+                        text: record.direction;
+                        color: record.direction == "Sent" ? #00bfff : #ff00ff;
+                        horizontal-stretch:1;
+
+                    }
+                    Text{
+                        text:record.status;
+                        color: record.status=="Success" ? #00ffaa:#ff4444;
+                        horizontal-stretch:1;
+                    }
+                    Text { text: record.timestamp;
+                     color: #aaaaaa; horizontal-stretch: 2;
+                     horizontal-alignment: right;
+                     }
+
+                }
+            }
+        }
+
             }
 
     }
