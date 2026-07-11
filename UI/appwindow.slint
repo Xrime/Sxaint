@@ -1,9 +1,9 @@
-import { Button, VerticalBox, HorizontalBox, LineEdit, ProgressIndicator,  } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, LineEdit, ProgressIndicator, TextEdit  } from "std-widgets.slint";
 export component AppWindow inherits Window {
     title: "Sxaint";
-    width: 650px;
-    height: 480px;
-    background: #2e3440;
+    width: 720px;
+    height: 540px;
+    background: #2e3440;//black
 
     in-out property <string> mode: "Send";
     in-out property <string> filepath: "";
@@ -12,18 +12,20 @@ export component AppWindow inherits Window {
     in-out property <float> progress_value: 0.0;
     in-out property <string> speed_text: "0.0 MB/s";
     in-out property <string> eta_text: "ETA: --";
+    in-out property <string> transfer_log: "";
+    in-out property <bool> is_active : false;
+
     callback start_trans();
     callback browse_file();
 
     VerticalBox {
         padding: 30px;
         spacing: 18px;
-        
         Text {
             text: "Sxaint";
             font-size: 32px;
             font-weight: 800;
-            color: #0077be;
+            color: #0077be;//whi
             horizontal-alignment: center;
         }
         HorizontalBox {
@@ -94,6 +96,12 @@ export component AppWindow inherits Window {
                 color: #00ffff;
                 horizontal-alignment: right;
                 font-weight: 600;
+            }
+            TextEdit {text: root.transfer_log;
+                      read-only: true;
+                      font-size: 12px;
+                      horizontal-stretch: 1;
+                      vertical-stretch: 1;
             }
             }
 

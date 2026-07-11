@@ -11,7 +11,6 @@ FetchContent_Declare(
         SOURCE_SUBDIR api/cpp
 )
 FetchContent_MakeAvailable(Slint)
-
 find_package(PkgConfig REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(fmt CONFIG REQUIRED)
@@ -67,6 +66,8 @@ add_executable(Sxaint main.cpp
         src/core/metrics.cpp
         include/core/crypto.h
         src/core/crypto.cpp
+        main.cpp
+        main.cpp
 )
 
 target_link_libraries(Sxaint PRIVATE sxaint_core)

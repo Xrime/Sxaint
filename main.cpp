@@ -12,6 +12,7 @@
 #include <windows.h>
 #include <shobjidl.h>
 #include <shellapi.h>
+#include <Lmcons.h>
 using  namespace sxaint;
 // void setup_logging() {
 //     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
@@ -161,7 +162,16 @@ int main(){
                 ui->set_status_text("Error: Choose a valid path.");
                 return;
             }
-            if (mode == "send") {
+            ui->set_is_active(true);
+            ui->set_tranfer_log("");
+            auto log_to_ui = [ui_handle = ui](const std::string& msg) {
+                spdlog::info(msg);
+                slint::invoke_from_event_loop([=]() {
+                   auto current = ui_handle->get_transfer_log().data();
+                    std::string new_log = std::string(current) + msg+"\n";
+                });
+            };
+            if (mode == "Send") {
                 std::string pin_str = ui->get_pin_code().data();
                 if (pin_str.length() != 6) {
                     ui->set_status_text("Error: PIN must be 6 digits");
