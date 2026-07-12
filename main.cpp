@@ -20,8 +20,9 @@
 
 
 using  namespace sxaint;
-std::string OpenWindowsFileDialog(bool selectFolder) {
-    std::string outPath = "";
+std::vector<std::string> OpenWindowsFileDialog(bool selectFolder) {
+    // std::string outPath = "";
+    std::vector<std::string> outPaths;
     HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED| COINIT_DISABLE_OLE1DDE);
     if (SUCCEEDED(hr)) {
         IFileOpenDialog *pFileOpen;
@@ -29,22 +30,37 @@ std::string OpenWindowsFileDialog(bool selectFolder) {
         if (SUCCEEDED(hr)) {
             DWORD dwOptions;
             pFileOpen->GetOptions(&dwOptions);
-            if (selectFolder) pFileOpen->SetOptions(dwOptions | FOS_PICKFOLDERS);
+            if (selectFolder) {
+                pFileOpen->SetOptions(dwOptions | FOS_PICKFOLDERS);
+            }else {
+                pFileOpen->SetOptions(dwOptions | FOS_ALLOWMULTISELECT);
+            }
             hr = pFileOpen->Show(NULL);
             if (SUCCEEDED(hr)) {
-                IShellItem *pItem;
-                hr = pFileOpen->GetResult(&pItem);
+                IShellItemArray *pItemArray;
+                hr = pFileOpen->GetResults(&pItemArray);
                 if (SUCCEEDED(hr)) {
-                    PWSTR pszFilePath;
-                    hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath);
-                    if (SUCCEEDED(hr)) {
-                        std::wstring wpath(pszFilePath);
-                        int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, &wpath[0], (int)wpath.size(), NULL, 0, NULL,NULL);
-                        outPath = std::string(sizeNeeded, 0);
-                        WideCharToMultiByte(CP_UTF8,0,&wpath[0], (int)wpath.size(),&outPath[0], sizeNeeded, NULL, NULL);
-                        CoTaskMemFree(pszFilePath);
+                    DWORD count;
+                    pItemArray->GetCount(&count);
+                    for (DWORD i = 0; i < count; i++) {
+                        IShellItem *pItem;
+                        hr = pItemArray->GetItemAt(i, &pItem);
+                        if(SUCCEEDED(hr)) {
+                            PWSTR pszFilePath;
+                            hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath);
+                            if (SUCCEEDED(hr)) {
+                                std::wstring wpath(pszFilePath);
+                                int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, &wpath[0], (int)wpath.size(), NULL, 0, NULL,NULL);
+                                std::string outPath(sizeNeeded, 0);
+                                WideCharToMultiByte(CP_UTF8,0,&wpath[0], (int)wpath.size(),&outPath[0], sizeNeeded, NULL, NULL);
+                                outPaths.push_back(outPath);
+                                CoTaskMemFree(pszFilePath);
+                            }
+                            pItem->Release();
+                        }
                     }
-                    pItem->Release();
+
+                    pItemArray->Release();
                 }
 
             }
@@ -52,9 +68,9 @@ std::string OpenWindowsFileDialog(bool selectFolder) {
         }
         CoUninitialize();
     }
-    return outPath;
+    return outPaths;
 }
-int main(){
+int main() {
     auto ui = AppWindow::create();
     auto history_model = std::make_shared<slint::VectorModel<historyRecord>>();
     ui->set_history_model(history_model);
@@ -74,7 +90,7 @@ int main(){
             rec.status = slint::SharedString(status);
             rec.timestamp = slint::SharedString(time);
             loaded_records.insert(loaded_records.begin(),rec);
-        }
+            }
     }
     for (const auto& rec: loaded_records) {
         history_model->push_back(rec);
@@ -104,17 +120,28 @@ int main(){
     ui->on_browse_file([&ui] {
         std::string mode = ui->get_mode().data();
         bool isReceiver =(mode == "Receive");
-        std::string selected_path= OpenWindowsFileDialog(isReceiver);
-        if (!selected_path.empty()) {
-            ui->set_filepath(slint::SharedString(selected_path));
+        std::vector<std::string> selected_paths= OpenWindowsFileDialog(isReceiver);
+        if (!selected_paths.empty()) {
+            std::string joined_paths;
+            for (size_t i = 0; i< selected_paths.size(); ++i) {
+                joined_paths+= selected_paths[i];
+                if (i < selected_paths.size() -1) joined_paths += "|";
+            }
+            ui->set_act_filepaths(slint::SharedString(joined_paths));
+            // ui->set_filepath(slint::SharedString(selected_paths));
+            if (selected_paths.size() == 1) {
+                ui->set_filepath(slint::SharedString(selected_paths[0]));
+            }else {
+                ui->set_filepath(slint::SharedString(std::to_string(selected_paths.size())+ "files selected"));
+            }
         }});
     ui->on_start_trans([&ui, log_history] {
         std::string mode = ui->get_mode().data();
-        std::string filepath = ui->get_filepath().data();
-        if (filepath.empty()) {
-            ui->set_status_text("Error: Choose a valid path.");
-            return;
+        std::string raw_paths = ui->get_act_filepaths().data();
+        if (raw_paths.empty()) {
+           raw_paths= ui->get_filepath().data();
         }
+        if (raw_paths.empty()) return;
         ui->set_is_active(true);
         // auto log_to_ui = [ui_handle = ui](const std::string& msg) {
         //     spdlog::info(msg);
@@ -138,83 +165,139 @@ int main(){
             }
             uint32_t pin =std::stoul(pin_str);
             ui->set_status_text("Searching for Receiver...");
+            std::vector<std::filesystem::path> file_queue;
+            std::stringstream ss(raw_paths);
+            std::string item;
+            while (std::getline(ss,item, '|')) {
+                if (!item.empty()) {
+                    file_queue.push_back(std::filesystem::path(reinterpret_cast<const char8_t *>(item.c_str())));
 
-            std::thread([ui_handle = ui, filepath, pin, broadcastName, log_history]() {
+                }
+            }
+            std::sort(file_queue.begin(), file_queue.end(),[](const std::filesystem::path& a, const std::filesystem::path& b) {
+                std::error_code ec;
+                return std::filesystem::file_size(a,ec)< std::filesystem::file_size(b,ec);
+            });
+
+            std::thread([ui_handle = ui, file_queue, pin, broadcastName, log_history]() {
                 try {
+                    // Discover the Receiver once
                     net::Discovery discovery;
-                    std::promise<std::string>peer_promise;
+                    std::promise<std::string> peer_promise;
                     std::atomic<bool> found = false;
+
                     discovery.set_callback([&](const net::Peer& peer) {
                         if (peer.hostname == broadcastName) return;
-                        if (!found.exchange(true)) {
-                            peer_promise.set_value(peer.ip_address);
-                        }
+                        if (!found.exchange(true)) peer_promise.set_value(peer.ip_address);
                     });
+
                     discovery.start(9001, broadcastName);
                     std::string target_ip;
                     auto future = peer_promise.get_future();
-
                     if (future.wait_for(std::chrono::seconds(3)) == std::future_status::ready) {
                         target_ip = future.get();
-                    }else {
+                    } else {
                         target_ip = "127.0.0.1";
                     }
                     discovery.stop();
 
+                    int total_files = file_queue.size();
+                    int current_file = 1;
+
+                    // 4. Loop through the sorted queue and send sequentially!
+                    for (const auto& path : file_queue) {
+                        slint::invoke_from_event_loop([=]() {
+                            ui_handle->set_status_text("Transferring to " + slint::SharedString(target_ip) + "...");
+                            // Update the new UI Queue Text!
+                            ui_handle->set_queue_text(slint::SharedString(fmt::format("Transferring: {} ({}/{})", path.filename().string(), current_file, total_files)));
+                        });
+
+                        net::Session session;
+                        session.sendFile(path, target_ip, 9000, pin,
+                            [ui_handle](int percent, double mbps, uint32_t eta) {
+                                slint::invoke_from_event_loop([=]() {
+                                    ui_handle->set_progress_value(percent / 100.0f);
+                                    ui_handle->set_speed_text(slint::SharedString(fmt::format("{:.1f} MB/s", mbps)));
+                                    ui_handle->set_eta_text(slint::SharedString(fmt::format("ETA: {}s", eta)));
+                                });
+                            });
+
+                        log_history(path.string(), "Sent", "Success");
+                        current_file++;
+
+                        // Give the Receiver 500ms to reset its sockets before blasting the next file
+                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                    }
+
                     slint::invoke_from_event_loop([=]() {
-                        ui_handle->set_status_text("Connecting to " + slint::SharedString(target_ip) + "...");
+                        ui_handle->set_status_text("All files transferred successfully!");
+                        ui_handle->set_queue_text("");
+                        ui_handle->set_is_active(false);
                     });
 
-                    net::Session session;
-                    session.sendFile(std::filesystem::path(reinterpret_cast<const char8_t*>(filepath.c_str())), target_ip,9000, pin,
-                        [ui_handle](int percent, double mbps,uint32_t eta) {
-                        slint::invoke_from_event_loop([=]() {
-                            ui_handle->set_progress_value(percent / 100.0f);
-                            ui_handle->set_speed_text(slint::SharedString(fmt::format("{:.1f} MB/s", mbps)));
-                            ui_handle->set_eta_text(slint::SharedString(fmt::format("ETA: {}s",eta)));
-                        });
-                    });
+                } catch (const std::exception& e) {
+                    spdlog::error("FATAL ERROR: {}", e.what());
                     slint::invoke_from_event_loop([=]() {
-                       ui_handle->set_status_text("Transfer Complete");
+                        ui_handle->set_status_text("Error: Transfer failed. Check console.");
                         ui_handle->set_is_active(false);
                     });
-                    log_history(filepath, "Sent", "Success");
-                }catch (const std::exception& e) {
-                    spdlog::error("Fatal Error: {}", e.what());
-                    slint::invoke_from_event_loop([=]() {
-                        ui_handle->set_status_text("Error: Transfer failed.");
-                        ui_handle->set_is_active(false);
-                    });
-                    log_history(filepath, "Sent", "Failed");
                 }
             }).detach();
-        }
-        else if (mode== "Receive") {
+
+        // ==========================================
+        // RECEIVER MODE (CONTINUOUS LOOP)
+        // ==========================================
+        } else if (mode == "Receive") {
             std::random_device rd;
             std::mt19937 gen(rd());
-            std::uniform_int_distribution<uint32_t> distrib(100000,999999);
+            std::uniform_int_distribution<uint32_t> distrib(100000, 999999);
             uint32_t secure_pin = distrib(gen);
+
             ui->set_pin_code(slint::SharedString(std::to_string(secure_pin)));
-            ui->set_status_text("Waiting for connections...");
+            ui->set_status_text("Listening for connections...");
 
-            std::thread([ui_handle =ui, filepath, secure_pin, broadcastName, log_history]() {
-               net::Discovery discovery;
-                discovery.start(9001, "Sxaint-Receiver");
-                net::Session session;
-                session.recvFile(std::filesystem::path(reinterpret_cast<const char8_t*>(filepath.c_str())), 9000, secure_pin,[ui_handle](int percent, double mbps, uint32_t eta) {
+            std::thread([ui_handle = ui, target_dir = raw_paths, secure_pin, broadcastName, log_history]() {
+                try {
+                    net::Discovery discovery;
+                    discovery.start(9001, broadcastName);
+
+                    int files_received = 0;
+
+                    // 5. Infinite loop to keep receiving queued files one after another!
+                    while (true) {
+                        slint::invoke_from_event_loop([=]() {
+                            if (files_received > 0) {
+                                ui_handle->set_queue_text(slint::SharedString(fmt::format("Files Received: {}", files_received)));
+                            }
+                        });
+
+                        net::Session session;
+                        session.recvFile(std::filesystem::path(reinterpret_cast<const char8_t*>(target_dir.c_str())), 9000, secure_pin,
+                            [ui_handle](int percent, double mbps, uint32_t eta) {
+                                slint::invoke_from_event_loop([=]() {
+                                    ui_handle->set_progress_value(percent / 100.0f);
+                                    ui_handle->set_speed_text(slint::SharedString(fmt::format("{:.1f} MB/s", mbps)));
+                                    ui_handle->set_eta_text(slint::SharedString(fmt::format("ETA: {}s", eta)));
+                                });
+                            });
+
+                        files_received++;
+                        log_history(target_dir, "Received", "Success");
+
+                        slint::invoke_from_event_loop([=]() {
+                            ui_handle->set_status_text("Listening for next file...");
+                        });
+
+                        // Buffer wait to avoid port collision
+                        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                    }
+                } catch (const std::exception& e) {
+                    spdlog::error("FATAL ERROR: {}", e.what());
                     slint::invoke_from_event_loop([=]() {
-                        ui_handle->set_progress_value(percent / 100.0f);
-                        ui_handle->set_speed_text(slint::SharedString(fmt::format("{:.1f} MB/s", mbps)));
-                        ui_handle->set_eta_text(slint::SharedString(fmt::format("ETA: {}s", eta)));
+                        ui_handle->set_status_text("Error: Receive failed.");
+                        ui_handle->set_is_active(false);
                     });
-                });
-                slint::invoke_from_event_loop([=]() {
-                    ui_handle->set_status_text("File received successfully");
-                    ui_handle->set_progress_value(1.0f);
-                    ui_handle->set_is_active(false);
-                });
-                log_history(filepath, "Received", "Success");
-
+                }
             }).detach();
         }
     });

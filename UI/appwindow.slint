@@ -25,6 +25,8 @@ export component AppWindow inherits Window {
     in-out property <string> transfer_log: "";
     in-out property <bool> is_active : false;
     in property <[historyRecord]> history_model;
+    in-out property <string> act_filepaths;
+    in-out property <string> queue_text: "";
 
     callback start_trans();
     callback browse_file();
@@ -102,10 +104,17 @@ export component AppWindow inherits Window {
                  color: #4db6ac;
                  horizontal-alignment: center;
                  }
+             if root.queue_text !="":Text{
+                text: root.queue_text;
+                color: #0077be;
+                horizontal-alignment: center;
+                font-size: 12px;
+             }
              ProgressIndicator {
                  progress: root.progress_value;
              }
-             HorizontalBox {Text{
+             HorizontalBox {
+             Text{
                  text: root.speed_text;
                  color: #00ffff;
                  horizontal-alignment: left;
@@ -118,6 +127,7 @@ export component AppWindow inherits Window {
                  font-weight: 600;
              }
 
+        }
         }
         if root.currentTab =="Histroy": VerticalBox{
             spacing: 10px;
@@ -160,9 +170,5 @@ export component AppWindow inherits Window {
                 }
             }
         }
-
-            }
-
     }
-
-  }
+ }
