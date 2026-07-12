@@ -68,6 +68,7 @@ add_executable(Sxaint main.cpp
         src/core/crypto.cpp
         main.cpp
         main.cpp
+        include/net/stun.h
 )
 
 target_link_libraries(Sxaint PRIVATE sxaint_core)
