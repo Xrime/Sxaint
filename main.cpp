@@ -304,7 +304,8 @@ int main() {
                         });
 
                         net::Session session;
-                        session.recvFile(std::filesystem::path(reinterpret_cast<const char8_t*>(target_dir.c_str())), 9000, secure_pin,
+                        uint16_t listenPort = useInternet ? 9002 : 9000;
+                        session.recvFile(std::filesystem::path(reinterpret_cast<const char8_t*>(target_dir.c_str())), listenPort    , secure_pin,
                             [ui_handle](int percent, double mbps, uint32_t eta) {
                                 slint::invoke_from_event_loop([=]() {
                                     ui_handle->set_progress_value(percent / 100.0f);

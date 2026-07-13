@@ -1,4 +1,4 @@
-import { Button, VerticalBox, HorizontalBox, LineEdit, ProgressIndicator, ListView ,CheckBox } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, LineEdit, ProgressIndicator, ListView, CheckBox } from "std-widgets.slint";
 
 export struct historyRecord {
     filename: string,
@@ -7,185 +7,378 @@ export struct historyRecord {
     timestamp: string,
 }
 
-export component AppWindow inherits Window {
-    title: "Sxaint";
-    width: 720px;
-    height: 540px;
-    background: #2e3440;//black
+component AppHeader inherits VerticalBox {
+    alignment: center;
+    spacing: 15px;
 
-    in-out property <string> currentTab: "Transfer";
+    in-out property <int> avatar_index;
+    in-out property <string> username;
+    in-out property <bool> is_username_set;
+    in property <[string]> avatars;
 
-    in-out property <string> mode: "Send";
-    in-out property <string> filepath: "";
-    in-out property <string> pin-code: "";
-    in-out property <string> status_text: "Ready to transfer.";
-    in-out property <float> progress_value: 0.0;
-    in-out property <string> speed_text: "0.0 MB/s";
-    in-out property <string> eta_text: "ETA: --";
-    in-out property <string> transfer_log: "";
-    in-out property <bool> is_active : false;
-    in property <[historyRecord]> history_model;
-    in-out property <string> act_filepaths;
-    in-out property <string> queue_text: "";
-    in-out property <bool> useInternet: false;
-    in-out property <string> target_ip;
+    HorizontalBox {
+        alignment: center;
+        Rectangle {
+            width: 120px;
+            height: 120px;
+            border-radius: 60px;
+            background: @linear-gradient(135deg, #0077be 0%, #00ffff 100%);
+            
+            Rectangle {
+                width: 112px;
+                height: 112px;
+                border-radius: 56px;
+                background: #2e3440;
+                x: 4px; y: 4px;
 
-    callback start_trans();
-    callback browse_file();
-
-    VerticalBox {
-        padding: 30px;
-        spacing: 18px;
-
-        HorizontalBox {
-            alignment: center;
-            spacing: 20px;
-            Button {text: "Transfer"; primary: root.currentTab=="Transfer"; clicked => {root.currentTab= "Transfer";}}
-            Button {text:"Histroy"; primary: root.currentTab =="History"; clicked => {root.currentTab = "Histroy";}}
-
-        }
-        Rectangle {height: 1px; background: #2e3440;}
-        if root.currentTab =="Transfer": VerticalBox {
-            spacing: 22px;
-            Text {
-                text: "Sxaint";
-                font-size: 32px;
-                font-weight: 800;
-                color: #0077be;//whi
-                horizontal-alignment: center;
-            }
-             HorizontalBox {
-                    spacing: 20px;
-                    Button {
-                        text: "Sender Mode";
-                        enabled: !root.is_active;
-                        clicked => {root.mode = "Send"}
-                    }
-                    Button {
-                        text: "Receiver Mode";
-                        enabled: !root.is_active;
-                        clicked => {root.mode = "Receive"}
-
-                    }
-             }
-             HorizontalBox {
-                 spacing: 10px;
-                 LineEdit {
-                     placeholder-text: root.mode =="Send" ? "Select File to Send..": "Select Save Directory...";
-                     text: root.filepath;
-                     enabled: !root.is_active;
-                     edited(text) => {root.filepath = text; }
-                     horizontal-stretch: 1 ;
-                 }
-                 Button {
-                     text: "Browse..";
-                     enabled: !root.is_active;
-                     clicked => {root.browse_file();}
-                 }
-             }
-              if root.mode == "Send" : LineEdit{
-                 placeholder-text: "Enter 6-Digit PIN";
-                 text: root.pin-code;
-                 enabled: !root.is_active;
-                 edited(text) => {root.pin-code = text;}
-             }
-             if root.mode == "Receive": Text {
-                 text: "PIN :"+ root.pin-code;
-                 color: #00ffff;
-                 font-size: 26px;
-                 font-weight: 700;
-                 horizontal-alignment: center;
-             }
-             HorizontalBox {
-                alignment: center;
-                CheckBox {
-                    text: "GI Mode";
-                    checked <=> root.useInternet;
-                    enabled: !root.is_active;
+                Text {
+                    text: root.avatars[root.avatar_index];
+                    font-size: 50px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
                 }
-             }
-             if root.useInternet&& root.mode == "Send": LineEdit{
-                placeholder-text: "Enter the GLobal Address (e.g. 198.51.100.1)";
-                text: root.target_ip;
-                enabled: !root.is_active;
-                edited(text) => {root.target_ip = text; }
-
-             }
-             Button {
-                 text: root.mode == "Send" ? "Initiate Transfer" : "Start Listening";
-                 primary: true;
-                 enabled: !root.is_active;
-                 clicked => { root.start_trans(); }
-             }
-             Text {text: root.status_text;
-                 color: #4db6ac;
-                 horizontal-alignment: center;
-                 }
-             if root.queue_text !="":Text{
-                text: root.queue_text;
-                color: #0077be;
-                horizontal-alignment: center;
-                font-size: 12px;
-             }
-             ProgressIndicator {
-                 progress: root.progress_value;
-             }
-             HorizontalBox {
-             Text{
-                 text: root.speed_text;
-                 color: #00ffff;
-                 horizontal-alignment: left;
-                 font-weight: 600;
-             }
-             Text {
-                 text: root.eta_text;
-                 color: #00ffff;
-                 horizontal-alignment: right;
-                 font-weight: 600;
-             }
-
-        }
-        }
-        if root.currentTab =="Histroy": VerticalBox{
-            spacing: 10px;
-
-            HorizontalBox {
-                padding-bottom: 5px;
-                Text {text: "Filename"; color: #00ffff;horizontal-stretch: 3; font-weight: 700;}
-                Text {text: "Type"; color: #00ffff; horizontal-stretch: 1; font-weight: 700;}
-                Text {text: "Status"; color: #00ffff; horizontal-stretch: 1;font-weight: 700;}
-                Text {text: "Time"; color: #00ffff; horizontal-stretch: 1; font-weight: 700;}
-
-            }
-            Rectangle {height: 1px; background: #2e3440;}
-            Rectangle {height: 5px;}
-            ListView {
-                for record in root.history_model : HorizontalBox {
-                    padding-top: 8px;
-                    padding-bottom:8px;
-                    Text{text: record.filename;
-                         color: #5c6bc0;
-                         horizontal-stretch: 3;
-                         overflow: elide;
+                TouchArea {
+                    clicked => {
+                        root.avatar_index = (root.avatar_index + 1);
+                        if (root.avatar_index >= root.avatars.length) { root.avatar_index = 0; }
                     }
-                    Text{
-                        text: record.direction;
-                        color: record.direction == "Sent" ? #00bfff : #ff00ff;
-                        horizontal-stretch:1;
-
-                    }
-                    Text{
-                        text:record.status;
-                        color: record.status=="Success" ? #00ffaa:#ff4444;
-                        horizontal-stretch:1;
-                    }
-                    Text { text: record.timestamp;
-                     color: #aaaaaa; horizontal-stretch: 2;
-                     horizontal-alignment: right;
-                     }
-
                 }
             }
         }
     }
- }
+
+    if !root.is_username_set: LineEdit {
+        placeholder-text: "Enter Username & Press Enter";
+        horizontal-alignment: center;
+        width: 250px;
+        font-size: 16px;
+        text <=> root.username;
+        accepted => {
+            if (root.username != "") {
+                root.is_username_set = true;
+            }
+        }
+    }
+
+    if root.is_username_set: Text {
+        text: root.username;
+        font-size: 24px;
+        font-weight: 700;
+        color: white;
+        horizontal-alignment: center;
+    }
+}
+
+component SmallHeader inherits HorizontalBox {
+    alignment: end;
+    spacing: 15px;
+
+    in property <int> avatar_index;
+    in property <string> username;
+    in property <[string]> avatars;
+
+    if root.username != "": Text {
+        text: root.username;
+        font-size: 18px;
+        font-weight: 700;
+        color: white;
+        vertical-alignment: center;
+    }
+
+    Rectangle {
+        width: 50px; height: 50px; border-radius: 25px; 
+        background: @linear-gradient(135deg, #0077be 0%, #00ffff 100%);
+        Rectangle {
+            width: 46px; height: 46px; border-radius: 23px; background: #2e3440;
+            x: 2px; y: 2px;
+            Text { 
+                text: root.avatars[root.avatar_index]; 
+                font-size: 24px; horizontal-alignment: center; vertical-alignment: center; 
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Sxaint";
+    width: 900px;
+    height: 650px;
+    background: #1e222a; // Deep sleek background
+
+    in-out property <string> currentPage: "Home";
+    in-out property <string> currentTab: "Transfer";
+    in-out property <string> mode: "Send";
+    in-out property <string> filepath: "";
+    in-out property <string> pin-code: "";
+    in-out property <string> status_text: "Ready to transfer";
+    in-out property <float> progress_value: 0.0;
+    in-out property <bool> useInternet: false;
+    in-out property <string> target_ip: "";
+    in-out property <[historyRecord]> history_model: [];
+    in-out property <bool> is_active: false;
+    in-out property <string> act_filepaths;
+    in-out property <string> queue_text: "";
+    in-out property <string> speed_text: "0.0 MB/s";
+    in-out property <string> eta_text: "ETA: --";
+    in-out property <string> transfer_log: "";
+
+    // Global properties for avatar and username
+    in-out property <int> global_avatar_index: 0;
+    in-out property <string> global_username: "";
+    in-out property <bool> global_username_set: false;
+    property <[string]> avatars: ["😎","🚀","💻","👽","🤩","🤖","🥶","🔥"];
+
+    property <bool> menu_open: false;
+
+    callback browse_file();
+    callback start_trans();
+
+    Rectangle {
+        width: 100%; height: 100%;
+
+        // --- PAGE 1: HOME ---
+        if root.currentPage == "Home": VerticalBox {
+            padding: 50px; alignment: center; spacing: 40px;
+
+            AppHeader {
+                avatar_index <=> root.global_avatar_index;
+                username <=> root.global_username;
+                is_username_set <=> root.global_username_set;
+                avatars: root.avatars;
+            }
+
+            Text { 
+                text: "Welcome to Sxaint"; 
+                font-size: 42px; 
+                font-weight: 800; 
+                color: #00ffff; 
+                horizontal-alignment: center; 
+            }
+            Text { 
+                text: "Fast, Secure, and Elegant File Transfers"; 
+                font-size: 18px; 
+                color: #81a1c1; 
+                horizontal-alignment: center; 
+            }
+
+            HorizontalBox {
+                alignment: center;
+                Rectangle {
+                    width: 200px; height: 50px; border-radius: 25px;
+                    background: touch_cont.pressed ? #005f9e : (touch_cont.has-hover ? #0088cc : #0077be);
+                    animate background { duration: 150ms; }
+                    Text { text: "Continue to Transfer"; color: white; font-size: 16px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                    touch_cont := TouchArea {
+                        clicked => { root.currentPage = "Transfer"; }
+                    }
+                }
+            }
+        }
+
+        // --- PAGE 2: TRANSFER ---
+        if root.currentPage == "Transfer": VerticalBox {
+            padding: 40px; padding-left: 80px; padding-right: 80px; spacing: 25px;
+            SmallHeader {
+                avatar_index: root.global_avatar_index;
+                username: root.global_username;
+                avatars: root.avatars;
+            }
+
+            Text { text: "Transfer Files"; font-size: 32px; color: white; font-weight: 800; horizontal-alignment: center;}
+
+            HorizontalBox {
+                alignment: center;
+                spacing: 20px;
+                Rectangle {
+                    width: 150px; height: 45px; border-radius: 8px;
+                    background: root.mode == "Send" ? #00ffff : #2e3440;
+                    animate background { duration: 200ms; }
+                    Text { text: "Send"; color: root.mode == "Send" ? #1e222a : white; font-weight: 700; font-size: 16px; horizontal-alignment: center; vertical-alignment: center; }
+                    TouchArea { clicked => { root.mode = "Send"; } }
+                }
+                Rectangle {
+                    width: 150px; height: 45px; border-radius: 8px;
+                    background: root.mode == "Receive" ? #00ffff : #2e3440;
+                    animate background { duration: 200ms; }
+                    Text { text: "Receive"; color: root.mode == "Receive" ? #1e222a : white; font-weight: 700; font-size: 16px; horizontal-alignment: center; vertical-alignment: center; }
+                    TouchArea { clicked => { root.mode = "Receive"; } }
+                }
+            }
+
+            Rectangle {
+                background: #2e3440;
+                border-radius: 12px;
+                padding: 20px;
+                VerticalBox {
+                    spacing: 15px; padding: 20px;
+                    HorizontalBox {
+                        spacing: 15px;
+                        LineEdit { text: root.filepath; placeholder-text: root.mode == "Send" ? "Select File to Send..." : "Select Save Directory..."; enabled: false; font-size: 16px; }
+                        Button { text: "Browse"; clicked => { root.browse_file(); } }
+                    }
+
+                    if root.mode == "Send": LineEdit {
+                        text <=> root.target_ip;
+                        placeholder-text: "Enter Target IP Address (Leave blank for Local Network)";
+                        font-size: 16px;
+                    }
+
+                    if root.mode == "Receive": LineEdit {
+                        text <=> root.pin-code;
+                        placeholder-text: "Enter Pin Code";
+                        font-size: 16px;
+                    }
+                    if root.mode == "Send": LineEdit {
+                        text <=> root.pin-code;
+                        placeholder-text: "Enter 6-Digit PIN to secure transfer";
+                        font-size: 16px;
+                    }
+
+                    VerticalBox {
+                        spacing: 10px;
+                        Text { text: root.status_text; color: #4db6ac; font-size: 16px; horizontal-alignment: center; }
+                        if root.queue_text != "": Text { text: root.queue_text; color: #0077be; font-size: 14px; horizontal-alignment: center; }
+                        ProgressIndicator { progress: root.progress_value; height: 8px; }
+                        HorizontalBox {
+                            Text { text: root.speed_text; color: #00ffff; font-weight: 600; horizontal-alignment: left; }
+                            Text { text: root.eta_text; color: #00ffff; font-weight: 600; horizontal-alignment: right; }
+                        }
+                    }
+
+                    HorizontalBox {
+                        alignment: center;
+                        Rectangle {
+                            width: 250px; height: 50px; border-radius: 25px;
+                            background: root.is_active ? #4c566a : (touch_start.pressed ? #005f9e : (touch_start.has-hover ? #0088cc : #0077be));
+                            animate background { duration: 150ms; }
+                            Text { text: root.mode == "Send" ? "Initiate Transfer" : "Start Listening"; color: white; font-size: 18px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                            touch_start := TouchArea {
+                                clicked => { if (!root.is_active) { root.start_trans(); } }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- PAGE 3: HISTORY ---
+        if root.currentPage == "History": VerticalBox {
+            padding: 40px; spacing: 20px;
+            SmallHeader {
+                avatar_index: root.global_avatar_index;
+                username: root.global_username;
+                avatars: root.avatars;
+            }
+
+            Text { text: "Transfer History"; font-size: 32px; color: white; font-weight: 800; }
+
+            Rectangle {
+                background: #2e3440;
+                border-radius: 12px;
+                VerticalBox {
+                    padding: 20px;
+                    spacing: 10px;
+                    // Table Headers
+                    HorizontalBox {
+                        spacing: 10px;
+                        padding-bottom: 10px;
+                        Text { text: "File Name"; color: #00ffff; font-size: 16px; font-weight: 700; width: 40%; }
+                        Text { text: "Type"; color: #00ffff; font-size: 16px; font-weight: 700; width: 15%; }
+                        Text { text: "Status"; color: #00ffff; font-size: 16px; font-weight: 700; width: 20%; }
+                        Text { text: "Time"; color: #00ffff; font-size: 16px; font-weight: 700; width: 25%; }
+                    }
+                    Rectangle { height: 1px; background: #4c566a; }
+
+                    // History List
+                    ListView {
+                        for record in root.history_model: HorizontalBox {
+                            spacing: 10px;
+                            padding-top: 12px;
+                            padding-bottom: 12px;
+                            Text { text: record.filename; color: white; font-size: 15px; width: 40%; overflow: elide; }
+                            Text { text: record.direction; color: record.direction == "Sent" ? #00bfff : #ff00ff; font-weight: 600; font-size: 15px; width: 15%; }
+                            Text { text: record.status; color: record.status=="Success" ? #00ffaa:#ff4444; font-weight: 600; font-size: 15px; width: 20%; }
+                            Text { text: record.timestamp; color: #aaaaaa; font-size: 14px; width: 25%; }
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- HAMBURGER BUTTON ---
+        Rectangle {
+            x: 20px; y: 20px; width: 50px; height: 50px;
+            background: touch_menu.has-hover ? #4c566a : #3b4252;
+            border-radius: 25px; z: 100;
+            animate background { duration: 150ms; }
+            Text { text: "☰"; font-size: 26px; color: #00ffff; horizontal-alignment: center; vertical-alignment: center; }
+            touch_menu := TouchArea { clicked => { root.menu_open = !root.menu_open; } }
+        }
+
+        // --- INVISIBLE OVERLAY (Closes menu when clicking outside) ---
+        if root.menu_open: TouchArea {
+            x: 280px; y: 0; width: root.width - 280px; height: 100%; z: 98;
+            clicked => { root.menu_open = false; }
+        }
+
+        // --- SLIDE-OUT MENU ---
+        Rectangle {
+            x: root.menu_open ? 0 : -280px; y: 0; width: 280px; height: 100%;
+            background: #2e3440; z: 99;
+            animate x { duration: 300ms; easing: ease-out-back; }
+
+            VerticalBox {
+                padding-top: 100px;
+                padding-left: 30px; padding-right: 30px; spacing: 25px; alignment: start;
+
+                Rectangle {
+                    height: 30px;
+                    HorizontalBox {
+                        spacing: 15px; alignment: start;
+                        Text { text: " "; font-size: 20px; vertical-alignment: center; }
+                        Text { text: "Home"; font-size: 18px; color: white; font-weight: 600; vertical-alignment: center; }
+                    }
+                    TouchArea {
+                        width: 100%; height: 100%;
+                        clicked => { root.currentPage = "Home"; root.menu_open = false; }
+                    }
+                }
+
+                Rectangle {
+                    height: 30px;
+                    HorizontalBox {
+                        spacing: 15px; alignment: start;
+                        Text { text: " "; font-size: 20px; vertical-alignment: center; }
+                        Text { text: "Transfer"; font-size: 18px; color: white; font-weight: 600; vertical-alignment: center; }
+                    }
+                    TouchArea {
+                        width: 100%; height: 100%;
+                        clicked => { root.currentPage = "Transfer"; root.menu_open = false; }
+                    }
+                }
+
+                Rectangle {
+                    height: 30px;
+                    HorizontalBox {
+                        spacing: 15px; alignment: start;
+                        Text { text: " "; font-size: 20px; vertical-alignment: center; }
+                        Text { text: "History"; font-size: 18px; color: white; font-weight: 600; vertical-alignment: center; }
+                    }
+                    TouchArea {
+                        width: 100%; height: 100%;
+                        clicked => { root.currentPage = "History"; root.menu_open = false; }
+                    }
+                }
+
+                Rectangle { height: 1px; background: #4c566a; }
+
+                Text { text: "Settings"; font-size: 20px; font-weight: 800; color: #81a1c1; }
+
+                CheckBox {
+                    text: "GI Mode (Internet)";
+                    checked <=> root.useInternet;
+                }
+            }
+        }
+    }
+}

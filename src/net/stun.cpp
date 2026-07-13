@@ -60,7 +60,7 @@ namespace sxaint::net {
                 if (attr_type == 0x0001 || attr_type == 0x0020) { // XOR
                     uint16_t port = (stunResp[i+6] << 8) | stunResp[i+7];
                     uint32_t ip = (stunResp[i+8] << 24) | (stunResp[i+9] << 16) | (stunResp[i+10] << 8) | stunResp[i+11];
-                    if (attr_type==0x2112) {
+                    if (attr_type==0x0020) {
                         port ^= 0x2112;
                         ip ^= 0x2112A442;
                     }

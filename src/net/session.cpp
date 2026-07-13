@@ -226,34 +226,47 @@ namespace sxaint::net {
     }
 
     void Session::processHandshake(const handshake *hs) {
+        {
+            std::lock_guard<std::mutex> lock(manifest_mutex_);
+            if (expectedChunks_ > 0) {
+                auto packed_bits = current_manifest_.pack_bitfield();
+                std::vector<std::byte> ack_buffer(sizeof(handshakeAck) + packed_bits.size());
+                handshakeAck ack{};
+                ack.type = static_cast<uint8_t>(messageType::handshakeAck);
+                ack.total_chunks = hs->total_chunks;
+                std::memcpy(ack_buffer.data(), &ack, sizeof(handshakeAck));
+                std::memcpy(ack_buffer.data() + sizeof(handshakeAck), packed_bits.data(), packed_bits.size());
+                transport_.sendChunk(std::move(ack_buffer));
+                return;
+            }
 
-        if (expectedChunks_ > 0) {
-            // Handshake already processed. Resend ACK in case it was lost.
-            auto packed_bits = current_manifest_.pack_bitfield();
-            std::vector<std::byte> ack_buffer(sizeof(handshakeAck) + packed_bits.size());
-            handshakeAck ack{};
-            ack.type = static_cast<uint8_t>(messageType::handshakeAck);
-            ack.total_chunks = hs->total_chunks;
-            std::memcpy(ack_buffer.data(), &ack, sizeof(handshakeAck));
-            std::memcpy(ack_buffer.data() + sizeof(handshakeAck), packed_bits.data(), packed_bits.size());
-            transport_.sendChunk(std::move(ack_buffer));
-            return;
+            if (hs->pin != expected_pin_) {
+                spdlog::error("Unauthorized transfer attempt! Invalid PiN: {}", hs->pin);
+                std::vector<std::byte> reject_buffer(1);
+                reject_buffer[0] = static_cast<std::byte>(messageType::handshakeReject);
+                transport_.sendChunk(std::move(reject_buffer), 0);
+                return;
+            }
+            expectedChunks_ = hs->total_chunks;
         }
 
-        if (hs->pin != expected_pin_) {
-            spdlog::error("Unauthorized transfer attempt! Invalid PiN: {}", hs->pin);
-            std::vector<std::byte> reject_buffer(1);
-            reject_buffer[0] = static_cast<std::byte>(messageType::handshakeReject);
-            transport_.sendChunk(std::move(reject_buffer), 0);
-            return;
-        }
         aes_key_ = core::Crypto::derive_key(expected_pin_);
         current_filename_ = hs->file_name;
-        expectedChunks_ = hs->total_chunks;
+        
         metrics_ = std::make_unique<core::transferMetrics>(hs->file_size);
         std::u8string u8_target(current_filename_.begin(), current_filename_.end());
         std::filesystem::path safe_filename(u8_target);
-        auto target_path = output_dir_ / current_filename_;
+        auto target_path = output_dir_ / safe_filename;
+        
+        // Auto-rename if file exists to prevent sharing violation
+        std::string stem = target_path.stem().string();
+        std::string ext = target_path.extension().string();
+        int counter = 1;
+        while (std::filesystem::exists(target_path)) {
+            target_path = output_dir_ / (stem + " (" + std::to_string(counter) + ")" + ext);
+            counter++;
+        }
+        current_filename_ = target_path.filename().string();
 
         current_manifest_.fileHash = current_filename_;
         current_manifest_.fileSize = hs->file_size;
