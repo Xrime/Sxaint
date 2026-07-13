@@ -69,6 +69,8 @@ add_executable(Sxaint main.cpp
         main.cpp
         main.cpp
         include/net/stun.h
+        src/net/stun.cpp
+        src/net/stun.cpp
 )
 
 target_link_libraries(Sxaint PRIVATE sxaint_core)

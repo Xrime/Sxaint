@@ -1,4 +1,4 @@
-import { Button, VerticalBox, HorizontalBox, LineEdit, ProgressIndicator, ListView  } from "std-widgets.slint";
+import { Button, VerticalBox, HorizontalBox, LineEdit, ProgressIndicator, ListView ,CheckBox } from "std-widgets.slint";
 
 export struct historyRecord {
     filename: string,
@@ -27,6 +27,8 @@ export component AppWindow inherits Window {
     in property <[historyRecord]> history_model;
     in-out property <string> act_filepaths;
     in-out property <string> queue_text: "";
+    in-out property <bool> useInternet: false;
+    in-out property <string> target_ip;
 
     callback start_trans();
     callback browse_file();
