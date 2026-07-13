@@ -96,6 +96,21 @@ export component AppWindow inherits Window {
                  font-weight: 700;
                  horizontal-alignment: center;
              }
+             HorizontalBox {
+                alignment: center;
+                CheckBox {
+                    text: "GI Mode";
+                    checked <=> root.useInternet;
+                    enabled: !root.is_active;
+                }
+             }
+             if root.useInternet&& root.mode == "Send": LineEdit{
+                placeholder-text: "Enter the GLobal Address (e.g. 198.51.100.1)";
+                text: root.target_ip;
+                enabled: !root.is_active;
+                edited(text) => {root.target_ip = text; }
+
+             }
              Button {
                  text: root.mode == "Send" ? "Initiate Transfer" : "Start Listening";
                  primary: true;

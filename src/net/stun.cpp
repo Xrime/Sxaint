@@ -12,8 +12,13 @@ namespace sxaint::net {
     publicEndpoint stunClient::getPublicEndpoint(uint16_t local_port) {
         publicEndpoint endpoint{"", 0, false};
 
+        WSADATA wsaData;
+        if (WSAStartup(MAKEWORD(2,2), &wsaData) != 0){
+               return endpoint;
+             }
         SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if (sock == INVALID_SOCKET) {
+            WSACleanup();
             return endpoint ;
         }
         DWORD timeout = 2000;
@@ -29,6 +34,7 @@ namespace sxaint::net {
 
         if (getaddrinfo("stun.l.google.com", "19302", &hints, &res) != 0) {
             closesocket(sock);
+            WSACleanup();
             return endpoint;
         }
 
@@ -65,7 +71,9 @@ namespace sxaint::net {
                 }
                 i +=4 + attr_len;
             }
-            return endpoint;
+
         }
+        WSACleanup();
+        return endpoint;
     }
 }

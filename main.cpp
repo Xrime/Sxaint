@@ -7,7 +7,6 @@
 #include <future>
 #include <atomic>
 #include <random>
-
 #include "include/net/session.h"
 #include <windows.h>
 #include <shobjidl.h>
@@ -17,6 +16,9 @@
 #include <chrono>
 #include <iomanip>
 #include <sstream>
+#include <valarray>
+#include "../include/net/stun.h"
+
 
 
 using  namespace sxaint;
@@ -155,51 +157,63 @@ int main() {
         DWORD usernameLen = UNLEN +1;
         GetUserNameA(username, &usernameLen);
         std::string broadcastName = std::string(username) + "'s PC";
+        bool useInternet = ui->get_useInternet();
+        std::string target_globalIP = ui->get_target_ip().data();
 
         if (mode == "Send") {
+
             std::string pin_str = ui->get_pin_code().data();
             if (pin_str.length() != 6) {
-                ui->set_status_text("Error: PIN must be 6 digits");
-                ui->set_is_active(false);
-                return;
+               ui->set_status_text("Error: PIN must be 6 digits");
+               ui->set_is_active(false);
+               return;
             }
-            uint32_t pin =std::stoul(pin_str);
             ui->set_status_text("Searching for Receiver...");
             std::vector<std::filesystem::path> file_queue;
             std::stringstream ss(raw_paths);
             std::string item;
             while (std::getline(ss,item, '|')) {
                 if (!item.empty()) {
-                    file_queue.push_back(std::filesystem::path(reinterpret_cast<const char8_t *>(item.c_str())));
+                   file_queue.push_back(std::filesystem::path(reinterpret_cast<const char8_t *>(item.c_str())));
 
-                }
-            }
+               }
+           }
             std::sort(file_queue.begin(), file_queue.end(),[](const std::filesystem::path& a, const std::filesystem::path& b) {
-                std::error_code ec;
-                return std::filesystem::file_size(a,ec)< std::filesystem::file_size(b,ec);
-            });
+               std::error_code ec;
+               return std::filesystem::file_size(a,ec)< std::filesystem::file_size(b,ec);
+           });
 
-            std::thread([ui_handle = ui, file_queue, pin, broadcastName, log_history]() {
+            uint32_t pin =std::stoul(pin_str);
+            if (useInternet && target_globalIP.empty()) {
+                ui->set_status_text("Error : Enter the Receiver Global IP");
+                ui->set_is_active(false);
+                return;
+            }
+            ui->set_status_text(useInternet ? "Connecting to the Internet" : "Scanning local network");
+
+
+            std::thread([ui_handle = ui, file_queue, pin, broadcastName, log_history, useInternet, target_globalIP]() {
                 try {
-                    // Discover the Receiver once
-                    net::Discovery discovery;
-                    std::promise<std::string> peer_promise;
-                    std::atomic<bool> found = false;
+                    std::string target_ip = target_globalIP;
+                    if (!useInternet) {
+                        net::Discovery discovery;
+                        std::promise<std::string> peer_promise;
+                        std::atomic<bool> found = false;
 
-                    discovery.set_callback([&](const net::Peer& peer) {
-                        if (peer.hostname == broadcastName) return;
-                        if (!found.exchange(true)) peer_promise.set_value(peer.ip_address);
-                    });
+                        discovery.set_callback([&](const net::Peer& peer) {
+                           if (peer.hostname == broadcastName) return;
+                            if (!found.exchange(true)) peer_promise.set_value(peer.ip_address);
 
-                    discovery.start(9001, broadcastName);
-                    std::string target_ip;
-                    auto future = peer_promise.get_future();
-                    if (future.wait_for(std::chrono::seconds(3)) == std::future_status::ready) {
-                        target_ip = future.get();
-                    } else {
-                        target_ip = "127.0.0.1";
+                        });
+                        discovery.start(9001, broadcastName);
+                        auto future = peer_promise.get_future();
+                        if (future.wait_for(std::chrono::seconds(3)) ==std::future_status::ready) {
+                            target_ip = future.get();
+                        }else {
+                            target_ip = "127.0.0.1";
+                        }
+                        discovery.stop();
                     }
-                    discovery.stop();
 
                     int total_files = file_queue.size();
                     int current_file = 1;
@@ -248,6 +262,7 @@ int main() {
         // RECEIVER MODE (CONTINUOUS LOOP)
         // ==========================================
         } else if (mode == "Receive") {
+
             std::random_device rd;
             std::mt19937 gen(rd());
             std::uniform_int_distribution<uint32_t> distrib(100000, 999999);
@@ -255,9 +270,26 @@ int main() {
 
             ui->set_pin_code(slint::SharedString(std::to_string(secure_pin)));
             ui->set_status_text("Listening for connections...");
-
-            std::thread([ui_handle = ui, target_dir = raw_paths, secure_pin, broadcastName, log_history]() {
+            ui->set_status_text("Resolving network status");
+            std::thread([ui_handle = ui, target_dir = raw_paths, secure_pin, broadcastName, log_history, useInternet]() {
                 try {
+                    if (useInternet) {
+                        auto pub_endpoint =  net::stunClient::getPublicEndpoint(9000);
+                        slint::invoke_from_event_loop([=]() {
+                            if (pub_endpoint.success) {
+                                ui_handle->set_status_text(slint::SharedString("Global IP: " + pub_endpoint.ip));
+                            }else {
+                                ui_handle->set_status_text("Failed to get Global IP.");
+                            }
+                        });
+
+                    }else {
+                        net::Discovery discovery;
+                        discovery.start(9001, broadcastName);
+                        slint::invoke_from_event_loop([=]() {
+                           ui_handle->set_status_text("Listening on Local Network..");
+                        });
+                    }
                     net::Discovery discovery;
                     discovery.start(9001, broadcastName);
 
